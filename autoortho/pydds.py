@@ -385,12 +385,19 @@ def to_dds(img, outpath):
     dds.gen_mipmaps(img)
     dds.write(outpath)
 
+    # check at least that the methods run without throwing errors
+    print(dds)
+    m = dds.mipmap_list[3]
+    print(f"{m}")
+    dds.seek(m.startpos)
+    d = dds.read(m.length)
+    print(f"retrieved: {len(d)} length: {m.length}, pos now: {dds.tell()}")
+
 
 def main():
     inimg = sys.argv[1]
     outimg = sys.argv[2]
     img = Image.open(inimg)
-
     to_dds(img, outimg)
 
 
