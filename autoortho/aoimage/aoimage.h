@@ -27,9 +27,10 @@ typedef struct
     uint8_t* ptr;
     int32_t width;
     int32_t height;
-    int32_t stride; // in bytes
+    int32_t stride;     // in bytes
     // up to here identical to rgba_surface
     int32_t channels;
+    char errmsg[80];    // a possible error message
 } aoimage_t;
 
 // dump header for debugging
@@ -39,7 +40,7 @@ AOIAPI void aoimage_dump(const char *title, const aoimage_t *img);
 AOIAPI int32_t aoimage_2_rgba(const aoimage_t *s_img, aoimage_t *d_img);
 
 AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img);
-AOIAPI int32_t aoimage_write_jpg(const char *filename, const aoimage_t *img, int32_t quality);
+AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t quality);
 AOIAPI int32_t aoimage_reduce_2(const aoimage_t *s_img, aoimage_t *d_img);
 AOIAPI void aoimage_delete(aoimage_t *img);
 AOIAPI int32_t aoimage_create(aoimage_t *img, uint32_t width, uint32_t height, uint32_t r, uint32_t g, uint32_t b);

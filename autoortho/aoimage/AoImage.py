@@ -4,7 +4,6 @@ import os
 import sys
 from ctypes import *
 import platform
-import threading
 
 
 import logging
@@ -16,7 +15,8 @@ class AoImage(Structure):
         ('_width', c_uint32),
         ('_height', c_uint32),
         ('_stride', c_uint32),
-        ('_channels', c_uint32)
+        ('_channels', c_uint32),
+        ('_errmsg', c_char*80)  #possible error message to be filled by the C routines
     ]
 
     def __init__(self):
@@ -25,7 +25,7 @@ class AoImage(Structure):
         self._height = 0
         self._stride = 0
         self._channels = 0
-        self._title = "No Title"
+        self._errmsg = b'';
 
     def __del__(self):
         _aoi.aoimage_delete(self)
@@ -37,32 +37,54 @@ class AoImage(Structure):
         _aoi.aoimage_delete(self)
         
     def convert(self, mode):
+        """
+        Not really needed as AoImage loads as RGBA
+        """
         assert mode == "RGBA", "Sorry, only conversion to RGBA supported"
         new = AoImage()
-        _aoi.aoimage_2_rgba(self, new)
+        if not _aoi.aoimage_2_rgba(self, new):
+            log.error(f"AoImage.reduce_2 error: {new._errmsg.decode()}")
+            return None
+
         return new
 
     def reduce_2(self, steps = 1):
+        """
+        Reduce image by factor 2.
+        """
         assert steps >= 1, "useless reduce_2" # otherwise we must do a useless copy
 
         half = self
         while steps >= 1:
             orig = half
             half = AoImage()
-            _aoi.aoimage_reduce_2(orig, half)
+            if not _aoi.aoimage_reduce_2(orig, half):
+                log.error(f"AoImage.reduce_2 error: {new._errmsg.decode()}")
+                return None
+           
             steps -= 1
 
         return half
 
     def write_jpg(self, filename, quality = 90):
-        result = _aoi.aoimage_write_jpg(filename.encode(), self, quality)
-
+        """
+        Convenience function to write jpeg.
+        """   
+        if not _aoi.aoimage_write_jpg(filename.encode(), self, quality):
+            log.error(f"AoImage.new error: {new._errmsg.decode()}")
+    
     def tobytes(self):
+        """
+        Not really needed, high overhead. Use data_ptr instead.
+        """      
         buf = create_string_buffer(self._width * self._height * self._channels)
         _aoi.aoimage_tobytes(self, buf)
         return buf.raw
 
     def data_ptr(self):
+        """
+        Return ptr to image data. Valid only as long as the object lives.
+        """
         return self._data
 
     def paste(self, p_img, pos):
@@ -78,33 +100,36 @@ def new(mode, wh, color):
     #print(f"{mode}, {wh}, {color}")
     assert(mode == "RGBA")
     new = AoImage()
-    result = _aoi.aoimage_create(new, wh[0], wh[1], color[0], color[1], color[2])
-    if result:
-        return new
-    return None
+    if not _aoi.aoimage_create(new, wh[0], wh[1], color[0], color[1], color[2]):
+        log.error(f"AoImage.new error: {new._errmsg.decode()}")
+        return None
+
+    return new
+
 
 def load_from_memory(mem):
     new = AoImage()
     if not _aoi.aoimage_from_memory(new, mem, len(mem)):
+        log.error(f"AoImage.load_from_memory error: {new._errmsg.decode()}")
         return None
+
     return new
 
 def open(filename):
     new = AoImage()
-    result = _aoi.aoimage_read_jpg(filename.encode(), new)
-    if not result:
+    if not _aoi.aoimage_read_jpg(filename.encode(), new):
+        log.error(f"AoImage.open error for {filename}: {new._errmsg.decode()}")
         return None
+
     return new
 
 # init code
 if platform.system().lower() == 'linux':
-    print("Linux detected")
     _aoi_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),'aoimage.so')
 elif platform.system().lower() == 'windows':
-    print("Windows detected")
     _aoi_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),'aoimage.dll')
 else:
-    print("System is not supported")
+    log.error("System is not supported")
     exit()
 
 _aoi = CDLL(_aoi_path)
@@ -119,29 +144,33 @@ _aoi.aoimage_from_memory.argtypes = (POINTER(AoImage), c_char_p, c_uint32)
 _aoi.aoimage_paste.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32, c_uint32)
 
 def main():
-    #inimg = sys.argv[1]
-    #outimg = sys.argv[2]
-    #img = Image.open(inimg)
+    logging.basicConfig(level = logging.DEBUG)
     width = 16
     height = 16
     black = new('RGBA', (256*width,256*height), (0,0,0))
-    print(f"{black}")
-    print(f"black._data: {black._data}")
-    print(f"black.data_ptr(): {black.data_ptr()}")
+    log.info(f"{black}")
+    log.info(f"black._data: {black._data}")
+    log.info(f"black.data_ptr(): {black.data_ptr()}")
     black.write_jpg("black.jpg")
     w, h = black.size
     black = None
-    print(f"black done, {w} {h}")
+    log.info(f"black done, {w} {h}")
 
     green = new('RGBA', (256*width,256*height), (0,230,0))
-    print(f"green {green}")
+    log.info(f"green {green}")
     green.write_jpg("green.jpg")
 
+    log.info("Trying nonexistent jpg")
+    img = open("../testfiles/non_exitent.jpg")
+
+    log.info("Trying non jpg")
+    img = open("main.c")
+
     img = open("../testfiles/test_tile.jpg")
-    print(f"AoImage.open {img}")
+    log.info(f"AoImage.open {img}")
 
     img2 = img.reduce_2()
-    print(f"img2: {img2}")
+    log.info(f"img2: {img2}")
 
     img2.write_jpg("test_tile_2.jpg")
 
@@ -149,7 +178,7 @@ def main():
     green.write_jpg("test_tile_p.jpg")
 
     img4 = img.reduce_2(2)
-    print(f"img4 {img4}")
+    log.info(f"img4 {img4}")
 
 
     img.paste(img4, (0, 2048))

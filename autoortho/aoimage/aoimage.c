@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <string.h>
+#include <errno.h>
 #include <turbojpeg.h>
 
 #include "aoimage.h"
@@ -24,7 +25,7 @@ AOIAPI int32_t aoimage_create(aoimage_t *img, uint32_t width, uint32_t height, u
     int len = width * height * 4;
     img->ptr = malloc(len);
     if (NULL == img->ptr) {
-        fprintf(stderr, "Can't malloc %d bytes", len);
+        sprintf(img->errmsg, "can't malloc %d bytes", len);
         return FALSE;
     }
 
@@ -77,7 +78,7 @@ AOIAPI int32_t aoimage_2_rgba(const aoimage_t *s_img, aoimage_t *d_img) {
         int dlen = s_img->width * s_img->height * 4;
         d_img->ptr = malloc(dlen);
         if (NULL == d_img->ptr) {
-            fprintf(stderr, "Can't malloc %d bytes", dlen);
+            sprintf(d_img->errmsg, "can't malloc %d bytes", dlen);
             return FALSE;
         }
         memcpy(d_img->ptr, s_img->ptr, dlen);
@@ -90,7 +91,7 @@ AOIAPI int32_t aoimage_2_rgba(const aoimage_t *s_img, aoimage_t *d_img) {
     int dlen = s_img->width * s_img->height * 4;
     uint8_t *dest = malloc(dlen);
     if (NULL == dest) {
-        fprintf(stderr, "Can't malloc %d bytes", dlen);
+		sprintf(d_img->errmsg, "can't malloc %d bytes", dlen);
         d_img->ptr = NULL;
         return FALSE;
     }
@@ -119,31 +120,31 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
 
     FILE *fd = fopen(filename, "rb");
     if (fd == NULL) {
-		fprintf(stderr, "FAILED to open source jpg");
+        strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
 		return FALSE;
 	}
 
     if (fseek(fd, 0, SEEK_END) < 0 || ((in_jpg_size = ftell(fd)) < 0) ||
             fseek(fd, 0, SEEK_SET) < 0) {
-        fprintf(stderr, "determining input file size");
+        strcpy(img->errmsg, "error determining input file size");
         return FALSE;
     }
 
     if (in_jpg_size == 0) {
-        fprintf(stderr, "no data");
+        strcpy(img->errmsg, "inputfile has no data");
         return FALSE;
     }
 
     //fprintf(stderr, "File size %ld\n", in_jpg_size);
 	in_jpg_buff = malloc(in_jpg_size);
     if (in_jpg_buff == NULL) {
-		fprintf(stderr, "can't malloc %ld bytes", in_jpg_size);
+		sprintf(img->errmsg, "can't malloc %ld bytes", in_jpg_size);
 		return FALSE;
 	}
 
     int rc = fread(in_jpg_buff, 1, in_jpg_size, fd);
     if (rc < 0) {
-        fprintf(stderr, "read error");
+        strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
         return FALSE;
     }
 
@@ -153,7 +154,7 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
     free(in_jpg_buff);
     return res;
 }
-AOIAPI int32_t aoimage_write_jpg(const char *filename, const aoimage_t *img, int32_t quality) {
+AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t quality) {
     tjhandle tjh = NULL;
     unsigned char *out_jpg_buf = NULL;
     unsigned long out_jpg_size = 0;
@@ -163,26 +164,26 @@ AOIAPI int32_t aoimage_write_jpg(const char *filename, const aoimage_t *img, int
 
     tjh = tjInitCompress();
     if (NULL == tjh) {
-        fprintf(stderr, "Can't allocate tjInitCompress"); fflush(stderr);
+        strcpy(img->errmsg, "Can't allocate tjInitCompress");
         goto err;
     }
 
     int rc = tjCompress2(tjh, img->ptr, img->width, 0, img->height, TJPF_RGBA,
                          &out_jpg_buf, &out_jpg_size, TJSAMP_444, quality, 0);
     if (rc) {
-        fprintf(stderr, "tjCompress2 failure %d\n", rc); fflush(stderr);
+        strncpy(img->errmsg, tjGetErrorStr2(tjh), sizeof(img->errmsg) - 1);
         goto err;
     }
 
     //fprintf(stderr, "jpg_size: %ld\n", out_jpg_size);
     fd = fopen(filename, "wb");
     if (fd == NULL) {
-		fprintf(stderr, "FAILED to open dest jpg '%s'", filename);
+        strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
 		goto err;
 	}
 
     if (fwrite(out_jpg_buf, 1, out_jpg_size, fd) < 0) {
-        fprintf(stderr, "write error");
+        strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
         goto err;
     }
 
@@ -208,10 +209,11 @@ AOIAPI int32_t aoimage_reduce_2(const aoimage_t *s_img, aoimage_t *d_img) {
     int dlen = slen / 4;
     uint8_t *dest = malloc(dlen);
     if (NULL == dest) {
-        fprintf(stderr, "Can't malloc %d bytes", dlen);
+		sprintf(d_img->errmsg, "can't malloc %d bytes", dlen);
         d_img->ptr = NULL;
         return FALSE;
     }
+
     const uint8_t *srptr = s_img->ptr;      // source row start
     const uint8_t *send = srptr + slen;
     uint8_t *dptr = dest;
@@ -254,7 +256,7 @@ AOIAPI int32_t aoimage_from_memory(aoimage_t *img, const uint8_t *data, uint32_t
     uint32_t signature = *(uint32_t *)data & 0x00ffffff;
 
     if (signature != 0x00ffd8ff) {
-        fputs("data is not a JPEG\n", stderr); fflush(stderr);
+        strcpy(img->errmsg, "data is not a JPEG");
         return FALSE;
     }
 
@@ -263,14 +265,14 @@ AOIAPI int32_t aoimage_from_memory(aoimage_t *img, const uint8_t *data, uint32_t
 
     tjh = tjInitDecompress();
     if (NULL == tjh) {
-        fprintf(stderr, "Can't allocate tjInitDecompress"); fflush(stderr);
+        strcpy(img->errmsg, "Can't allocate tjInitDecompress");
         goto err;
     }
 
     int subsamp, width, height, color_space;
 
     if (tjDecompressHeader3(tjh, data, len, &width, &height, &subsamp, &color_space) < 0) {
-        fprintf(stderr, "Failure %s\n", tjGetErrorStr2(tjh)); fflush(stderr);
+        strncpy(img->errmsg, tjGetErrorStr2(tjh), sizeof(img->errmsg) - 1);
         goto err;
     }
 
@@ -280,14 +282,14 @@ AOIAPI int32_t aoimage_from_memory(aoimage_t *img, const uint8_t *data, uint32_t
     //fprintf(stderr, "img_size %ld bytes\n", img_size);
     img_buff = malloc(img_size);
     if (img_buff == NULL) {
-		fprintf(stderr, "can't malloc %ld bytes", img_size);
+		sprintf(img->errmsg, "can't malloc %ld bytes", img_size);
 		goto err;
 	}
 
     //printf("Pixel format: %d\n", TJPF_RGBA);
 
     if (tjDecompress2(tjh, data, len, img_buff, width, 0, height, TJPF_RGBA, TJFLAG_FASTDCT) < 0) {
-        fprintf(stderr, "Failure %s\n", tjGetErrorStr2(tjh)); fflush(stderr);
+        strncpy(img->errmsg, tjGetErrorStr2(tjh), sizeof(img->errmsg) - 1);
         goto err;
     }
 
