@@ -38,7 +38,7 @@ class AoImage(Structure):
         
     def convert(self, mode):
         """
-        Not really needed as AoImage loads as RGBA
+        Not really needed as AoImage always loads as RGBA
         """
         assert mode == "RGBA", "Sorry, only conversion to RGBA supported"
         new = AoImage()
