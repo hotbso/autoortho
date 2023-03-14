@@ -113,7 +113,8 @@ class Getter(object):
     def __init__(self, num_workers):
         
         self.count = 0
-        self.queue = PriorityQueue()
+        #self.queue = PriorityQueue()
+        self.queue = Queue()    # fifo to match deadlines
         self.workers = []
         self.WORKING = True
         self.localdata = threading.local()
@@ -237,6 +238,8 @@ class Chunk(object):
 
         self.cache_path = os.path.join(self.cache_dir, f"{self.chunk_id}.jpg")
 
+        self.deadline = time.time() + 4.0
+
     def __lt__(self, other):
         return self.priority < other.priority
 
@@ -269,6 +272,14 @@ class Chunk(object):
             self.ready.set()
             return True
 
+        remaining_time = self.deadline - time.time()
+
+        # expired before being retrieved
+        if remaining_time <= 1.0:
+            log.error(f"deadline not met for {self}")
+            self.ready.set()    # results in a black hole
+            return True
+            
         if not self.starttime:
             self.startime = time.time()
 
@@ -294,26 +305,27 @@ class Chunk(object):
                 "user-agent": "curl/7.68.0"
         }
         
-        time.sleep((self.attempt/10))
+        #time.sleep((self.attempt/10))
         self.attempt += 1
 
         req = Request(url, headers=header)
         resp = 0
         try:
-            resp = urlopen(req, timeout=5)
+            resp = urlopen(req, timeout=remaining_time)
             if resp.status != 200:
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
             self.data = resp.read()
             STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(self.data)
         except Exception as err:
-            attempts_left = self.max_attempt - self.attempt
-            log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}, attempts left: {attempts_left}")
-            if (attempts_left > 0):
-                return False    # results in resubmit
+            pass
+            # attempts_left = self.max_attempt - self.attempt
+            log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
+            # if (attempts_left > 0):
+                # return False    # results in resubmit
 
-            log.warning(f"Giving up on {self}")
-            self.data = None    # don't hang forever, chunk is ready but no data, results in a black hole
+            # log.warning(f"Giving up on {self}")
+            # self.data = None    # don't hang forever, chunk is ready but no data, results in a black hole
         finally:
             if resp:
                 resp.close()
@@ -726,8 +738,7 @@ class Tile(object):
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
             ret = chunk.ready.wait()
-            if not ret or chunk.data == None:
-                log.error("Failed to get chunk.")
+            if not ret or chunk.data == None:   # deadline not met
                 continue
 
             start_x = int((chunk.width) * (chunk.col - col))
