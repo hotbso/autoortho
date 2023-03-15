@@ -124,8 +124,8 @@ class Getter(object):
             t.start()
             self.workers.append(t)
 
-        #self.stat_t = t = threading.Thread(target=self.show_stats, daemon=True)
-        #self.stat_t.start()
+        self.stat_t = threading.Thread(target=self.show_stats, daemon=True)
+        self.stat_t.start()
 
 
     def stop(self):
@@ -167,7 +167,8 @@ class Getter(object):
     def show_stats(self):
         while self.WORKING:
             log.info(f"{self.__class__.__name__} got: {self.count}")
-            time.sleep(10)
+            print(f"{self.__class__.__name__}, qsize: {self.queue.qsize()}")
+            time.sleep(5)
         log.info(f"Exiting {self.__class__.__name__} stat thread.  Got: {self.count} total")
 
 
@@ -215,13 +216,14 @@ class Chunk(object):
 
     serverlist=['a','b','c','d']
 
-    def __init__(self, col, row, maptype, zoom, priority=0, cache_dir='.cache'):
+    def __init__(self, col, row, maptype, zoom, priority=0, cache_dir='.cache', is_header = False):
         self.col = col
         self.row = row
         self.zoom = zoom
         self.maptype = maptype
         self.cache_dir = cache_dir
-        
+        self.is_header = is_header
+
         # Hack override maptype
         #self.maptype = "BI"
 
@@ -241,10 +243,20 @@ class Chunk(object):
         self.deadline = time.time() + 4.0
 
     def __lt__(self, other):
-        return self.priority < other.priority
+        if time.time() > other.deadline:                # expired to the front
+            return False
+
+        if (self.is_header and not other.is_header):    # headers to the front...
+            return True
+    
+        if (other.is_header and not self.is_header):
+            return False
+
+        return self.deadline < other.deadline
 
     def __repr__(self):
-        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
+        #return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
+        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.is_header},{self.deadline:0.1f})"
 
     def get_cache(self):
         global STATS
@@ -266,7 +278,7 @@ class Chunk(object):
             h.write(self.data)
 
     def get(self, idx=0):
-        #log.debug(f"Getting {self}") 
+        log.debug(f"Getting {self}") 
 
         if self.get_cache():
             self.ready.set()
@@ -276,7 +288,7 @@ class Chunk(object):
 
         # expired before being retrieved
         if remaining_time <= 1.0:
-            log.error(f"deadline not met for {self}")
+            log.error(f"deadline not met for {self}, is_header: {self.is_header}, remaining {remaining_time:0.1f}")
             self.ready.set()    # results in a black hole
             return True
             
@@ -416,7 +428,7 @@ class Tile(object):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
 
     @locked
-    def _create_chunks(self, quick_zoom=0):
+    def _create_chunks(self, quick_zoom=0, is_header = False):
         col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
 
         if not self.chunks.get(zoom):
@@ -425,7 +437,7 @@ class Tile(object):
             for r in range(row, row+height):
                 for c in range(col, col+width):
                     #chunk = Chunk(c, r, self.maptype, zoom, priority=self.priority)
-                    chunk = Chunk(c, r, self.maptype, zoom, cache_dir=self.cache_dir)
+                    chunk = Chunk(c, r, self.maptype, zoom, cache_dir=self.cache_dir, is_header = is_header)
                     self.chunks[zoom].append(chunk)
 
     def _find_cache_file(self):
@@ -710,8 +722,8 @@ class Tile(object):
         if endrow is not None:
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
-
-        self._create_chunks(zoom)
+        is_header = startrow == 0 and endrow == 0
+        self._create_chunks(zoom, is_header)
         chunks = self.chunks[zoom][startchunk:endchunk]
         log.debug(f"Start chunk: {startchunk}  End chunk: {endchunk}  Chunklen {len(self.chunks[zoom])}")
 
