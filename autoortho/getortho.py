@@ -216,7 +216,7 @@ class Chunk(object):
 
     serverlist=['a','b','c','d']
 
-    def __init__(self, col, row, maptype, zoom, priority=0, cache_dir='.cache', is_header = False):
+    def __init__(self, col, row, maptype, zoom, is_header, deadline, priority=0, cache_dir='.cache'):
         self.col = col
         self.row = row
         self.zoom = zoom
@@ -240,7 +240,7 @@ class Chunk(object):
 
         self.cache_path = os.path.join(self.cache_dir, f"{self.chunk_id}.jpg")
 
-        self.deadline = time.time() + 4.0
+        self.deadline = deadline
 
     def __lt__(self, other):
         if time.time() > other.deadline:                # expired to the front
@@ -376,6 +376,7 @@ class Tile(object):
     dds = None
 
     refs = None
+    default_timeout = 15.0
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -421,6 +422,8 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
 
+        self.deadline = time.time() + self.default_timeout
+
     def __lt__(self, other):
         return self.priority < other.priority
 
@@ -428,7 +431,7 @@ class Tile(object):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
 
     @locked
-    def _create_chunks(self, quick_zoom=0, is_header = False):
+    def _create_chunks(self, is_header, deadline, quick_zoom=0):
         col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
 
         if not self.chunks.get(zoom):
@@ -437,7 +440,7 @@ class Tile(object):
             for r in range(row, row+height):
                 for c in range(col, col+width):
                     #chunk = Chunk(c, r, self.maptype, zoom, priority=self.priority)
-                    chunk = Chunk(c, r, self.maptype, zoom, cache_dir=self.cache_dir, is_header = is_header)
+                    chunk = Chunk(c, r, self.maptype, zoom, is_header, deadline, cache_dir=self.cache_dir)
                     self.chunks[zoom].append(chunk)
 
     def _find_cache_file(self):
@@ -646,6 +649,7 @@ class Tile(object):
         mipmap = self.dds.mipmap_list[mm_idx]
 
         if offset == 0:
+            self.deadline = time.time() + self.default_timeout
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
             self.get_bytes(0, length)
@@ -723,7 +727,7 @@ class Tile(object):
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
         is_header = startrow == 0 and endrow == 0
-        self._create_chunks(zoom, is_header)
+        self._create_chunks(is_header, self.deadline, zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
         log.debug(f"Start chunk: {startchunk}  End chunk: {endchunk}  Chunklen {len(self.chunks[zoom])}")
 
