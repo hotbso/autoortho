@@ -182,7 +182,7 @@ class ChunkGetter(Getter):
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
-chunk_getter = ChunkGetter(64)
+chunk_getter = ChunkGetter(16)
 
 #class TileGetter(Getter):
 #    def get(self, obj, *args, **kwargs):
