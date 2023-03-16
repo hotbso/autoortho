@@ -113,8 +113,7 @@ class Getter(object):
     def __init__(self, num_workers):
         
         self.count = 0
-        #self.queue = PriorityQueue()
-        self.queue = Queue()    # fifo to match deadlines
+        self.queue = PriorityQueue()
         self.workers = []
         self.WORKING = True
         self.localdata = threading.local()
@@ -376,7 +375,7 @@ class Tile(object):
     dds = None
 
     refs = None
-    default_timeout = 15.0
+    default_timeout = 10.0
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
