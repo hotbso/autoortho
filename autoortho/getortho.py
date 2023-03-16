@@ -245,11 +245,14 @@ class Chunk(object):
         if time.time() > other.deadline:                # expired to the front
             return False
 
-        if (self.is_header and not other.is_header):    # headers to the front...
-            return True
+        # headers to the tail...
+        # because we mostly look at mipmaps so the 16 chunks comprising the header
+        # are mostly wasted bandwidth
+        if (self.is_header and not other.is_header):
+            return False
     
         if (other.is_header and not self.is_header):
-            return False
+            return True
 
         return self.deadline < other.deadline
 
