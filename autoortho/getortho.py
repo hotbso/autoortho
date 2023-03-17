@@ -356,6 +356,7 @@ class Chunk(object):
         #self.img.close()
         #del(self.img)
 
+startup_time = None
 
 class Tile(object):
     row = -1
@@ -424,7 +425,19 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
 
-        self.deadline = time.time() + self.default_timeout
+        global startup_time
+        now = time.time()
+        if startup_time == None:
+            startup_time = now
+
+        # After startup allow a longer deadline to ease cache warming
+        # Just in case the plane is spawned at an uncached airport
+        if now >  startup_time + 180.0:
+            self.deadline = now + self.default_timeout
+        elif now > startup_time + 120.0:
+            self.deadline = now + 2 * self.default_timeout
+        else:
+            self.deadline = now + 3 * self.default_timeout
 
     def __lt__(self, other):
         return self.priority < other.priority
