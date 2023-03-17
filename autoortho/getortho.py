@@ -215,13 +215,12 @@ class Chunk(object):
 
     serverlist=['a','b','c','d']
 
-    def __init__(self, col, row, maptype, zoom, is_header, deadline, priority=0, cache_dir='.cache'):
+    def __init__(self, col, row, maptype, zoom, deadline, priority=0, cache_dir='.cache'):
         self.col = col
         self.row = row
         self.zoom = zoom
         self.maptype = maptype
         self.cache_dir = cache_dir
-        self.is_header = is_header
 
         # Hack override maptype
         #self.maptype = "BI"
@@ -245,20 +244,17 @@ class Chunk(object):
         if time.time() > other.deadline:                # expired to the front
             return False
 
-        # headers to the tail...
-        # because we mostly look at mipmaps so the 16 chunks comprising the header
-        # are mostly wasted bandwidth
-        if (self.is_header and not other.is_header):
+        if self.priority > other.priority:
             return False
     
-        if (other.is_header and not self.is_header):
+        if self.priority < other.priority:
             return True
 
         return self.deadline < other.deadline
 
     def __repr__(self):
         #return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
-        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.is_header},{self.deadline:0.1f})"
+        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority},{self.deadline:0.1f})"
 
     def get_cache(self):
         global STATS
@@ -290,7 +286,7 @@ class Chunk(object):
 
         # expired before being retrieved
         if remaining_time <= 1.0:
-            log.error(f"deadline not met for {self}, is_header: {self.is_header}, remaining {remaining_time:0.1f}")
+            log.error(f"deadline not met for {self}, remaining {remaining_time:0.1f}")
             self.ready.set()    # results in a black hole
             return True
             
@@ -446,7 +442,7 @@ class Tile(object):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
 
     @locked
-    def _create_chunks(self, is_header, deadline, quick_zoom=0):
+    def _create_chunks(self, deadline, priority, quick_zoom=0):
         col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
 
         if not self.chunks.get(zoom):
@@ -455,7 +451,7 @@ class Tile(object):
             for r in range(row, row+height):
                 for c in range(col, col+width):
                     #chunk = Chunk(c, r, self.maptype, zoom, priority=self.priority)
-                    chunk = Chunk(c, r, self.maptype, zoom, is_header, deadline, cache_dir=self.cache_dir)
+                    chunk = Chunk(c, r, self.maptype, zoom, deadline, priority, cache_dir=self.cache_dir)
                     self.chunks[zoom].append(chunk)
 
     def _find_cache_file(self):
@@ -741,8 +737,17 @@ class Tile(object):
         if endrow is not None:
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
-        is_header = startrow == 0 and endrow == 0
-        self._create_chunks(is_header, self.deadline, zoom)
+
+        # headers to the tail...
+        # because we mostly look at mipmaps so the 16 chunks comprising the header
+        # are mostly wasted bandwidth
+
+        if startrow == 0 and endrow == 0:
+            priority = 99
+        else:
+            priority = zoom
+
+        self._create_chunks(self.deadline, priority, zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
         log.debug(f"Start chunk: {startchunk}  End chunk: {endchunk}  Chunklen {len(self.chunks[zoom])}")
 
