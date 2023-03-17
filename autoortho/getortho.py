@@ -378,7 +378,7 @@ class Tile(object):
     dds = None
 
     refs = None
-    default_timeout = 10.0
+    default_timeout = 12.0
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -752,7 +752,7 @@ class Tile(object):
         #outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
         #new_im = Image.new('RGBA', (256*width,256*height), (250,250,250))
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
-        new_im = AoImage.new('RGBA', (256*width,256*height), (0,0,0))
+        new_im = AoImage.new('RGBA', (256*width,256*height), (85,74,41)) # dark shade of a soil like color
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
             ret = chunk.ready.wait()
