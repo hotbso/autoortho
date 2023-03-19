@@ -7,3 +7,4 @@ out.dds
 .release_info
 *.o
 *.exe
+*/libjpeg-turbo-gcc64
