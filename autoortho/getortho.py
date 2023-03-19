@@ -20,7 +20,6 @@ import pydds
 
 
 import psutil
-#from PIL import Image
 from aoimage import AoImage
 
 from aoconfig import CFG
@@ -231,9 +230,6 @@ class Chunk(object):
         self.ready.clear()
         if maptype == "Null":
             self.maptype = "EOX"
-
-        #if not os.path.exists(self.cache_dir):
-        #    os.makedirs(self.cache_dir)
 
         self.cache_path = os.path.join(self.cache_dir, f"{self.chunk_id}.jpg")
 
@@ -626,7 +622,8 @@ class Tile(object):
             log.debug("READ_DDS_BYTES: Read header")
             self.get_bytes(0, length)
         #elif offset < 32768:
-        elif offset < 131072:
+        elif offset < 65536:
+        #elif offset < 131072:
         #elif offset < 262144:
         #elif offset < 1048576:
             # How far into mipmap 0 do we go before just getting the whole thing
@@ -732,11 +729,21 @@ class Tile(object):
 
             start_x = int((chunk.width) * (chunk.col - col))
             start_y = int((chunk.height) * (chunk.row - row))
+
             chunk_img = AoImage.load_from_memory(chunk.data)
             if chunk_img:
-                new_im.paste(chunk_img, (start_x, start_y))
+                new_im.paste(
+                    chunk_img,
+                    #Image.open(BytesIO(chunk.data)).convert("RGBA"),
+                    (
+                        start_x,
+                        start_y
+                    )
+                )
             else:
-                log.warning(f"Could not decode {chunk.cache_path}")
+                log.warning(f"Failed {chunk}")
+
+        log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         return new_im
 
 
@@ -924,7 +931,7 @@ class TileCacher(object):
                 continue
 
             while len(self.tiles) >= self.cache_tile_lim and cur_mem > self.cache_mem_lim:
-                log.info("Hit cache limit.  Remove oldest 20")
+                log.debug("Hit cache limit.  Remove oldest 20")
                 with self.tc_lock:
                     for i in list(self.tiles.keys())[:20]:
                         t = self.tiles.get(i)
