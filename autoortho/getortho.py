@@ -305,7 +305,8 @@ class Chunk(object):
 
         self.fetchtime = time.time() - self.starttime
 
-        self.save_cache()
+        if self.data != None:
+            self.save_cache()
         self.ready.set()
         return True
 
