@@ -331,7 +331,8 @@ class Tile(object):
     refs = None
     default_timeout = 12.0
     has_timeouts = False
-  
+    last_offset = -1
+
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
         self.col = int(col)
@@ -408,6 +409,9 @@ class Tile(object):
     @locked
     def _create_chunks(self, deadline, priority, quick_zoom=0):
         col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
+
+        if deadline < time.time():
+            print(f"create_chunks already expired {deadline - time.time():0.1f}")
 
         if not self.chunks.get(zoom):
             self.chunks[zoom] = []
@@ -639,8 +643,14 @@ class Tile(object):
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
-        if offset == 0:
+        # new seek or continue from a header read
+        if ((offset != self.last_offset) or 
+             (self.deadline < time.time() - 10.0)):
+            #print(f"new cycle: {self.last_offset} {offset}")
             self.set_deadline()
+
+        if offset == 0:
+            #self.set_deadline()
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
             self.get_bytes(0, length)
@@ -656,16 +666,16 @@ class Tile(object):
             # Total length is within this mipmap.  Make sure we have it.
             log.debug(f"READ_DDS_BYTES: Detected middle read for mipmap {mipmap.idx}")
             if not mipmap.retrieved:
-                if mm_idx > 0:
-                    self.set_deadline()              
+                #if mm_idx > 0:
+                #    self.set_deadline()
                 log.debug(f"READ_DDS_BYTES: Retrieve {mipmap.idx}")
                 self.get_mipmap(mipmap.idx)
         else:
             log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
-            if mm_idx > 0:
-                self.set_deadline()              
+            #if mm_idx > 0:
+            #    self.set_deadline()
             
             # Get bytes prior to this mipmap
             self.get_bytes(offset, length)
@@ -674,6 +684,8 @@ class Tile(object):
             self.get_mipmap(mm_idx + 1)
         
         self.bytes_read += length
+
+        self.last_offset = offset + length
         # Seek and return data
         self.dds.seek(offset)
         return self.dds.read(length)
@@ -700,6 +712,8 @@ class Tile(object):
         #
         # Get an image for a particular mipmap
         #
+        if self.deadline < time.time():
+            print(f"get_img already expired {self.deadline - time.time():0.1f}")
 
         # Get effective zoom
         zoom = self.zoom - mipmap
@@ -743,6 +757,7 @@ class Tile(object):
             if not chunk.ready.is_set():
                 #log.info(f"SUBMIT: {chunk}")
                 chunk.priority = self.min_zoom - mipmap 
+                chunk.deadline = self.deadline
                 chunk_getter.submit(chunk)
                 data_updated = True
 
