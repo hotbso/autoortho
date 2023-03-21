@@ -157,7 +157,7 @@ class ChunkGetter(Getter):
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
-chunk_getter = ChunkGetter(16)
+chunk_getter = ChunkGetter(32)
 
 #class TileGetter(Getter):
 #    def get(self, obj, *args, **kwargs):
@@ -214,15 +214,6 @@ class Chunk(object):
         self.deadline = deadline
 
     def __lt__(self, other):
-        if time.time() > other.deadline:                # expired to the front
-            return False
-
-        if self.priority > other.priority:
-            return False
-    
-        if self.priority < other.priority:
-            return True
-
         return self.deadline < other.deadline
 
     def __repr__(self):
@@ -305,7 +296,7 @@ class Chunk(object):
 
         self.fetchtime = time.time() - self.starttime
 
-        if self.data != None:
+        if self.data:
             self.save_cache()
         self.ready.set()
         return True
@@ -339,7 +330,8 @@ class Tile(object):
 
     refs = None
     default_timeout = 12.0
-
+    has_timeouts = False
+  
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
         self.col = int(col)
@@ -387,6 +379,16 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
 
+        # just ensure that it's always defined with a reasonable value
+        self.deadline = time.time() + self.default_timeout
+
+    def __lt__(self, other):
+        return self.priority < other.priority
+
+    def __repr__(self):
+        return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
+
+    def set_deadline(self):
         global startup_time
         now = time.time()
         if startup_time == None:
@@ -395,17 +397,13 @@ class Tile(object):
         # After startup allow a longer deadline to ease cache warming
         # Just in case the plane is spawned at an uncached airport
         if now >  startup_time + 180.0:
-            self.deadline = now + self.default_timeout
+            self.default_timeout = 12.0
         elif now > startup_time + 120.0:
-            self.deadline = now + 2 * self.default_timeout
+            self.default_timeout = 30.0
         else:
-            self.deadline = now + 3 * self.default_timeout
+            self.default_timeout = 60.0
 
-    def __lt__(self, other):
-        return self.priority < other.priority
-
-    def __repr__(self):
-        return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
+        self.deadline = max(self.deadline, now + self.default_timeout)
 
     @locked
     def _create_chunks(self, deadline, priority, quick_zoom=0):
@@ -634,7 +632,7 @@ class Tile(object):
 
     def read_dds_bytes(self, offset, length):
         log.debug(f"READ DDS BYTES: {offset} {length}")
-       
+
         if offset > 0 and offset < self.lowest_offset:
             self.lowest_offset = offset
 
@@ -642,7 +640,7 @@ class Tile(object):
         mipmap = self.dds.mipmap_list[mm_idx]
 
         if offset == 0:
-            self.deadline = time.time() + self.default_timeout
+            self.set_deadline()
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
             self.get_bytes(0, length)
@@ -658,12 +656,16 @@ class Tile(object):
             # Total length is within this mipmap.  Make sure we have it.
             log.debug(f"READ_DDS_BYTES: Detected middle read for mipmap {mipmap.idx}")
             if not mipmap.retrieved:
+                if mm_idx > 0:
+                    self.set_deadline()              
                 log.debug(f"READ_DDS_BYTES: Retrieve {mipmap.idx}")
                 self.get_mipmap(mipmap.idx)
         else:
             log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
+            if mm_idx > 0:
+                self.set_deadline()              
             
             # Get bytes prior to this mipmap
             self.get_bytes(offset, length)
@@ -758,6 +760,7 @@ class Tile(object):
         for chunk in chunks:
             ret = chunk.ready.wait()
             if not ret or chunk.data == None:   # deadline not met
+                self.has_timeouts = True
                 continue
 
             start_x = int((chunk.width) * (chunk.col - col))
@@ -990,6 +993,9 @@ class TileCacher(object):
         idx = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
             tile = self.tiles.get(idx)
+            if tile and tile.refs <= 0:
+                print(f"_get_tile with refs <= 0! {tile}")
+
             if not tile:
                 tile = self._open_tile(row, col, map_type, zoom)
         return tile
@@ -1016,6 +1022,7 @@ class TileCacher(object):
                 self.hits += 1
                 
             tile.refs += 1
+
         return tile
 
     
@@ -1029,7 +1036,7 @@ class TileCacher(object):
 
             t.refs -= 1
 
-            if self.enable_cache: # and not t.should_close():
+            if self.enable_cache and not t.has_timeouts: # and not t.should_close():
                 log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
                 return True
 
