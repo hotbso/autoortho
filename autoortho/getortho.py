@@ -143,7 +143,7 @@ class Getter(object):
         while self.WORKING:
             log.info(f"{self.__class__.__name__} got: {self.count}")
             print(f"{self.__class__.__name__}, qsize: {self.queue.qsize()}")
-            time.sleep(5)
+            time.sleep(10)
         log.info(f"Exiting {self.__class__.__name__} stat thread.  Got: {self.count} total")
 
 
@@ -191,7 +191,7 @@ class Chunk(object):
 
     serverlist=['a','b','c','d']
 
-    def __init__(self, col, row, maptype, zoom, deadline, priority=0, cache_dir='.cache'):
+    def __init__(self, col, row, maptype, zoom, priority=0, cache_dir='.cache'):
         self.col = col
         self.row = row
         self.zoom = zoom
@@ -210,8 +210,6 @@ class Chunk(object):
             self.maptype = "EOX"
 
         self.cache_path = os.path.join(self.cache_dir, f"{self.chunk_id}.jpg")
-
-        self.deadline = deadline
 
     def __lt__(self, other):
         return self.deadline < other.deadline
@@ -236,7 +234,7 @@ class Chunk(object):
             h.write(self.data)
 
     def get(self, idx=0):
-        log.debug(f"Getting {self}") 
+        #log.debug(f"Getting {self}") 
 
         if self.get_cache():
             self.ready.set()
@@ -289,7 +287,8 @@ class Chunk(object):
             STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(self.data)
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
-            # fallthrough
+            #return False
+            # FALLTHROUGH
         finally:
             if resp:
                 resp.close()
@@ -407,11 +406,8 @@ class Tile(object):
         self.deadline = max(self.deadline, now + self.default_timeout)
 
     @locked
-    def _create_chunks(self, deadline, priority, quick_zoom=0):
+    def _create_chunks(self, quick_zoom=0):
         col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
-
-        if deadline < time.time():
-            print(f"create_chunks already expired {deadline - time.time():0.1f}")
 
         if not self.chunks.get(zoom):
             self.chunks[zoom] = []
@@ -419,7 +415,7 @@ class Tile(object):
             for r in range(row, row+height):
                 for c in range(col, col+width):
                     #chunk = Chunk(c, r, self.maptype, zoom, priority=self.priority)
-                    chunk = Chunk(c, r, self.maptype, zoom, deadline, priority, cache_dir=self.cache_dir)
+                    chunk = Chunk(c, r, self.maptype, zoom, cache_dir=self.cache_dir)
                     self.chunks[zoom].append(chunk)
 
     def _find_cache_file(self):
@@ -643,9 +639,8 @@ class Tile(object):
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
-        # new seek or continue from a header read
-        if ((offset != self.last_offset) or 
-             (self.deadline < time.time() - 10.0)):
+        # new read cycle or continued read?
+        if offset != self.last_offset:
             #print(f"new cycle: {self.last_offset} {offset}")
             self.set_deadline()
 
@@ -737,16 +732,7 @@ class Tile(object):
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
 
-        # headers to the tail...
-        # because we mostly look at mipmaps so the 16 chunks comprising the header
-        # are mostly wasted bandwidth
-
-        if startrow == 0 and endrow == 0:
-            priority = 99
-        else:
-            priority = zoom
-
-        self._create_chunks(self.deadline, priority, zoom)
+        self._create_chunks(zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
         log.debug(f"Start chunk: {startchunk}  End chunk: {endchunk}  Chunklen {len(self.chunks[zoom])}")
 
@@ -1008,9 +994,6 @@ class TileCacher(object):
         idx = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
             tile = self.tiles.get(idx)
-            if tile and tile.refs <= 0:
-                print(f"_get_tile with refs <= 0! {tile}")
-
             if not tile:
                 tile = self._open_tile(row, col, map_type, zoom)
         return tile
@@ -1037,7 +1020,6 @@ class TileCacher(object):
                 self.hits += 1
                 
             tile.refs += 1
-
         return tile
 
     
