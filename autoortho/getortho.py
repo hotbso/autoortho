@@ -1035,6 +1035,7 @@ class TileCacher(object):
 
             if self.enable_cache and not t.has_timeouts: # and not t.should_close():
                 log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
+                t.last_offset = -1 # so a revive from the cache starts a new cycle
                 return True
 
             if t.refs <= 0:
