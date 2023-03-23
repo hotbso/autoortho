@@ -672,6 +672,24 @@ class Tile(object):
             log.debug(f"GET_IMG: We already have mipmap {mipmap} for {self}")
             return
 
+        mm_jpg_path = None
+        mm_jpg_height = 256*height
+        if startrow == 0 and endrow == None:
+            mm_jpg_path = os.path.join(self.cache_dir, f"t_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
+            new_im = AoImage.open(mm_jpg_path, log_error = False)
+            if new_im:
+                print(f"opened {mm_jpg_path}")
+                return new_im
+        elif startrow == 0 and endrow == 0:
+            mm_jpg_path = os.path.join(self.cache_dir, f"r0_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
+            mm_jpg_height = 256
+            r0_im = AoImage.open(mm_jpg_path, log_error = False)
+            if r0_im:
+                print(f"opened {mm_jpg_path}")
+                new_im = AoImage.new('RGBA', (256*width,256*height), (0,0,0))
+                new_im.paste(r0_im, (0, 0))
+                return new_im
+
         startchunk = 0
         endchunk = None
         # Determine start and end chunk
@@ -681,17 +699,6 @@ class Tile(object):
         if endrow is not None:
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
-        mm_jpg_path = None
-        if startrow == 0 and endrow == None:
-            mm_jpg_path = os.path.join(self.cache_dir, f"t_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
-        elif startrow == 0 and endrow == 0:
-            mm_jpg_path = os.path.join(self.cache_dir, f"r0_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
-
-        if mm_jpg_path:
-            new_im = AoImage.open(mm_jpg_path, log_error = False)
-            if new_im:
-                print(f"opened {mm_jpg_path}")
-                return new_im
 
         self._create_chunks(zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
@@ -747,7 +754,10 @@ class Tile(object):
                 log.warning(f"Failed {chunk}")
 
         if mm_jpg_path:
+            h = new_im._height
+            new_im._height = mm_jpg_height
             new_im.write_jpg(mm_jpg_path, 50)
+            new_im._height = h
             print(f"saved {mm_jpg_path}")
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
