@@ -688,7 +688,7 @@ class Tile(object):
             mm_jpg_path = os.path.join(self.cache_dir, f"r0_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
 
         if mm_jpg_path:
-            new_im = AoImage.open(mm_jpg_path)
+            new_im = AoImage.open(mm_jpg_path, log_error = False)
             if new_im:
                 print(f"opened {mm_jpg_path}")
                 return new_im
