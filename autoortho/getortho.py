@@ -681,6 +681,17 @@ class Tile(object):
         if endrow is not None:
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
+        mm_jpg_path = None
+        if startrow == 0 and endrow == None:
+            mm_jpg_path = os.path.join(self.cache_dir, f"t_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
+        elif startrow == 0 and endrow == 0:
+            mm_jpg_path = os.path.join(self.cache_dir, f"r0_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
+
+        if mm_jpg_path:
+            new_im = AoImage.open(mm_jpg_path)
+            if new_im:
+                print(f"opened {mm_jpg_path}")
+                return new_im
 
         self._create_chunks(zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
@@ -734,6 +745,10 @@ class Tile(object):
                 )
             else:
                 log.warning(f"Failed {chunk}")
+
+        if mm_jpg_path:
+            new_im.write_jpg(mm_jpg_path, 50)
+            print(f"saved {mm_jpg_path}")
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         return new_im
