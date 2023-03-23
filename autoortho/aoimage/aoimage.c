@@ -137,7 +137,7 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
         return FALSE;
     }
 
-    fprintf(stderr, "File size %ld\n", in_jpg_size);
+    //fprintf(stderr, "File size %ld\n", in_jpg_size);
 	in_jpg_buff = malloc(in_jpg_size);
     if (in_jpg_buff == NULL) {
 		sprintf(img->errmsg, "can't malloc %ld bytes", in_jpg_size);
