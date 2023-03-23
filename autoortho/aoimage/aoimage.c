@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <turbojpeg.h>
 
 #include "aoimage.h"
@@ -118,14 +120,14 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
 	long in_jpg_size;
 	unsigned char *in_jpg_buff;
 
-    FILE *fd = fopen(filename, "rb");
-    if (fd == NULL) {
+    int fd = open(filename, O_RDONLY|O_BINARY);
+    if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
 		return FALSE;
 	}
 
-    if (fseek(fd, 0, SEEK_END) < 0 || ((in_jpg_size = ftell(fd)) < 0) ||
-            fseek(fd, 0, SEEK_SET) < 0) {
+    if (lseek(fd, 0, SEEK_END) < 0 || ((in_jpg_size = tell(fd)) < 0) ||
+            lseek(fd, 0, SEEK_SET) < 0) {
         strcpy(img->errmsg, "error determining input file size");
         return FALSE;
     }
@@ -142,18 +144,24 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
 		return FALSE;
 	}
 
-    int rc = fread(in_jpg_buff, 1, in_jpg_size, fd);
+    int rc = read(fd, in_jpg_buff, in_jpg_size);
     if (rc < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
         return FALSE;
     }
 
+    if (rc != in_jpg_size) {
+		sprintf(img->errmsg, "short read %d (%ld)", rc, in_jpg_size);
+		return FALSE;
+	}
+
     //fprintf(stderr, "Input: Read %d/%lu bytes\n", rc, in_jpg_size);
-    fclose(fd);
+    close(fd);
     int res = aoimage_from_memory(img, in_jpg_buff, in_jpg_size);
     free(in_jpg_buff);
     return res;
 }
+
 AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t quality) {
     tjhandle tjh = NULL;
     unsigned char *out_jpg_buf = NULL;

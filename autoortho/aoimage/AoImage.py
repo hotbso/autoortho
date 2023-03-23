@@ -115,10 +115,11 @@ def load_from_memory(mem):
 
     return new
 
-def open(filename):
+def open(filename, log_error = True):
     new = AoImage()
     if not _aoi.aoimage_read_jpg(filename.encode(), new):
-        log.error(f"AoImage.open error for {filename}: {new._errmsg.decode()}")
+        if log_error:
+            log.error(f"AoImage.open error for {filename}: {new._errmsg.decode()}")
         return None
 
     return new
