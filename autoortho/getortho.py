@@ -678,15 +678,15 @@ class Tile(object):
             mm_jpg_path = os.path.join(self.cache_dir, f"t_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
             new_im = AoImage.open(mm_jpg_path, log_error = False)
             if new_im:
-                print(f"opened {mm_jpg_path}")
+                #print(f"opened {mm_jpg_path}")
                 return new_im
         elif startrow == 0 and endrow == 0:
             mm_jpg_path = os.path.join(self.cache_dir, f"r0_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
             mm_jpg_height = 256
             r0_im = AoImage.open(mm_jpg_path, log_error = False)
             if r0_im:
-                print(f"opened {mm_jpg_path}")
-                new_im = AoImage.new('RGBA', (256*width,256*height), (0,0,0))
+                #print(f"opened {mm_jpg_path}")
+                new_im = AoImage.new('RGBA', (256*width,256*height), (85,74,41)) # dark shade of a soil like color
                 new_im.paste(r0_im, (0, 0))
                 return new_im
 
@@ -725,7 +725,7 @@ class Tile(object):
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
         
         #new_im = Image.new('RGBA', (256*width,256*height), (0,0,0))
-        new_im = AoImage.new('RGBA', (256*width,256*height), (0,0,0))
+        new_im = AoImage.new('RGBA', (256*width,256*height), (85,74,41)) # dark shade of a soil like color
         
 
         #log.info(f"NUM CHUNKS: {len(chunks)}")
