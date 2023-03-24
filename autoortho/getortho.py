@@ -99,8 +99,8 @@ class Getter(object):
             t.start()
             self.workers.append(t)
 
-        self.stat_t = threading.Thread(target=self.show_stats, daemon=True)
-        self.stat_t.start()
+        #self.stat_t = threading.Thread(target=self.show_stats, daemon=True)
+        #self.stat_t.start()
 
 
     def stop(self):
@@ -216,7 +216,7 @@ class Chunk(object):
 
     def __repr__(self):
         #return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
-        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority},{self.deadline:0.1f})"
+        return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority},{self.deadline - time.time():0.1f})"
 
     def get_cache(self):
         global STATS
@@ -403,7 +403,7 @@ class Tile(object):
         else:
             self.default_timeout = 60.0
 
-        self.deadline = max(self.deadline, now + self.default_timeout)
+        self.deadline = now + self.default_timeout
 
     @locked
     def _create_chunks(self, quick_zoom=0):
@@ -702,8 +702,6 @@ class Tile(object):
         #
         # Get an image for a particular mipmap
         #
-        if self.deadline < time.time():
-            print(f"get_img already expired {self.deadline - time.time():0.1f}")
 
         # Get effective zoom
         zoom = self.zoom - mipmap
