@@ -305,6 +305,7 @@ class Chunk(object):
         #del(self.img)
 
 startup_time = None
+last_read_time = 0
 
 class Tile(object):
     row = -1
@@ -389,10 +390,13 @@ class Tile(object):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
 
     def set_deadline(self):
-        global startup_time
+        global startup_time, last_read_time
+
         now = time.time()
-        if startup_time == None:
+        if now - last_read_time > 120:  # sitting idle for 2 minutes, treat like a startup
             startup_time = now
+
+        last_read_time = now
 
         # After startup allow a longer deadline to ease cache warming
         # Just in case the plane is spawned at an uncached airport
