@@ -8,6 +8,10 @@
 #include <unistd.h>
 #include <turbojpeg.h>
 
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
 #include "aoimage.h"
 
 #define TRUE 1
@@ -132,8 +136,7 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
 		return FALSE;
 	}
 
-    if (lseek(fd, 0, SEEK_END) < 0 || ((in_jpg_size = tell(fd)) < 0) ||
-            lseek(fd, 0, SEEK_SET) < 0) {
+    if ((in_jpg_size = lseek(fd, 0, SEEK_END)) < 0 || lseek(fd, 0, SEEK_SET) < 0) {
         strcpy(img->errmsg, "error determining input file size");
         return FALSE;
     }
