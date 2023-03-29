@@ -35,7 +35,7 @@ class AoImage(Structure):
 
     def close(self):
         _aoi.aoimage_delete(self)
-        
+
     def convert(self, mode):
         """
         Not really needed as AoImage always loads as RGBA
@@ -61,22 +61,34 @@ class AoImage(Structure):
             if not _aoi.aoimage_reduce_2(orig, half):
                 log.error(f"AoImage.reduce_2 error: {new._errmsg.decode()}")
                 return None
-           
+
             steps -= 1
 
         return half
 
+    def enlarge_2(self, steps):
+        """
+        Enlarge by factor 2^steps
+        """
+        assert 1 <= steps and steps <= 4    # assert a reasonable range
+        new = AoImage()
+        if not _aoi.aoimage_enlarge_2(self, new, steps):
+            log.error(f"AoImage.enlarge_2 error: {new._errmsg.decode()}")
+            return None
+
+        return new
+
     def write_jpg(self, filename, quality = 90):
         """
         Convenience function to write jpeg.
-        """   
+        """
         if not _aoi.aoimage_write_jpg(filename.encode(), self, quality):
             log.error(f"AoImage.new error: {new._errmsg.decode()}")
-    
+
     def tobytes(self):
         """
         Not really needed, high overhead. Use data_ptr instead.
-        """      
+        """
         buf = create_string_buffer(self._width * self._height * self._channels)
         _aoi.aoimage_tobytes(self, buf)
         return buf.raw
@@ -138,6 +150,7 @@ _aoi.aoimage_read_jpg.argtypes = (c_char_p, POINTER(AoImage))
 _aoi.aoimage_write_jpg.argtypes = (c_char_p, POINTER(AoImage), c_int32)
 _aoi.aoimage_2_rgba.argtypes = (POINTER(AoImage), POINTER(AoImage))
 _aoi.aoimage_reduce_2.argtypes = (POINTER(AoImage), POINTER(AoImage))
+_aoi.aoimage_enlarge_2.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32)
 _aoi.aoimage_delete.argtypes = (POINTER(AoImage),)
 _aoi.aoimage_create.argtypes = (POINTER(AoImage), c_uint32, c_uint32, c_uint32, c_uint32, c_uint32)
 _aoi.aoimage_tobytes.argtypes = (POINTER(AoImage), c_char_p)
@@ -184,6 +197,12 @@ def main():
 
     img.paste(img4, (0, 2048))
     img.write_jpg("test_tile_p2.jpg")
+
+    bg_img = open("1072_693_11_BI.jpg")
+    en_16 = bg_img.enlarge_2(4)
+    log.info(f"en_16 {en_16}")
+    en_16.write_jpg("en_16.jpg")
+
 
 if __name__ == "__main__":
     main()
