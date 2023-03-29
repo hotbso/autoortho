@@ -119,10 +119,11 @@ def new(mode, wh, color):
     return new
 
 
-def load_from_memory(mem):
+def load_from_memory(mem, log_error = True):
     new = AoImage()
     if not _aoi.aoimage_from_memory(new, mem, len(mem)):
-        log.error(f"AoImage.load_from_memory error: {new._errmsg.decode()}")
+        if log_error:
+            log.error(f"AoImage.load_from_memory error: {new._errmsg.decode()}")
         return None
 
     return new
