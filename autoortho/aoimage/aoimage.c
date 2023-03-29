@@ -128,54 +128,59 @@ AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
     memset(img, 0, sizeof(aoimage_t));
 
 	long in_jpg_size;
-	unsigned char *in_jpg_buff;
+	unsigned char *in_jpg_buff = NULL;
+    int fd = -1;
+    int result = FALSE;
 
-    int fd = open(filename, O_RDONLY|O_BINARY);
+    fd = open(filename, O_RDONLY|O_BINARY);
     if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-		return FALSE;
+        goto out;
 	}
 
     if ((in_jpg_size = lseek(fd, 0, SEEK_END)) < 0 || lseek(fd, 0, SEEK_SET) < 0) {
         strcpy(img->errmsg, "error determining input file size");
-        return FALSE;
+        goto out;
     }
 
     if (in_jpg_size == 0) {
         strcpy(img->errmsg, "inputfile has no data");
-        return FALSE;
+        goto out;
     }
 
     //fprintf(stderr, "File size %ld\n", in_jpg_size);
 	in_jpg_buff = malloc(in_jpg_size);
     if (in_jpg_buff == NULL) {
 		sprintf(img->errmsg, "can't malloc %ld bytes", in_jpg_size);
-		return FALSE;
+        goto out;
 	}
 
     int rc = read(fd, in_jpg_buff, in_jpg_size);
     if (rc < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-        return FALSE;
+        goto out;
     }
 
     if (rc != in_jpg_size) {
 		sprintf(img->errmsg, "short read %d (%ld)", rc, in_jpg_size);
-		return FALSE;
+        goto out;
 	}
 
     //fprintf(stderr, "Input: Read %d/%lu bytes\n", rc, in_jpg_size);
-    close(fd);
-    int res = aoimage_from_memory(img, in_jpg_buff, in_jpg_size);
-    free(in_jpg_buff);
-    return res;
+    result = aoimage_from_memory(img, in_jpg_buff, in_jpg_size);
+
+out:
+    if (fd >= 0) close(fd);
+    if (in_jpg_buff) free(in_jpg_buff);
+
+    return result;
 }
 
 AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t quality) {
     tjhandle tjh = NULL;
     unsigned char *out_jpg_buf = NULL;
     unsigned long out_jpg_size = 0;
-    FILE *fd = NULL;
+    int fd = -1;
 
     int result = FALSE;
     img->errmsg[0] = '\0';
@@ -183,32 +188,38 @@ AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t q
     tjh = tjInitCompress();
     if (NULL == tjh) {
         strcpy(img->errmsg, "Can't allocate tjInitCompress");
-        goto err;
+        goto out;
     }
 
     int rc = tjCompress2(tjh, img->ptr, img->width, 0, img->height, TJPF_RGBA,
                          &out_jpg_buf, &out_jpg_size, TJSAMP_444, quality, 0);
     if (rc) {
         strncpy(img->errmsg, tjGetErrorStr2(tjh), sizeof(img->errmsg) - 1);
-        goto err;
+        goto out;
     }
 
     //fprintf(stderr, "jpg_size: %ld\n", out_jpg_size);
-    fd = fopen(filename, "wb");
-    if (fd == NULL) {
+    fd = open(filename, O_CREAT|O_WRONLY|O_BINARY);
+    if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-		goto err;
+		goto out;
 	}
 
-    if (fwrite(out_jpg_buf, 1, out_jpg_size, fd) < 0) {
+    rc = write(fd, out_jpg_buf, out_jpg_size);
+    if (rc < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-        goto err;
+        goto out;
     }
+
+    if (rc != out_jpg_size) {
+		sprintf(img->errmsg, "short write %d (%ld)", rc, out_jpg_size);
+        goto out;
+	}
 
     result = TRUE;
 
-   err:
-    if (fd) fclose(fd);
+   out:
+    if (fd >= 0) close(fd);
     if (tjh) tjDestroy(tjh);
     if (out_jpg_buf) tjFree(out_jpg_buf);
     return result;
