@@ -188,6 +188,7 @@ class Chunk(object):
     ready = None
     data = None
     img = None
+    deadline = 0
 
     serverlist=['a','b','c','d']
 
@@ -212,7 +213,7 @@ class Chunk(object):
         self.cache_path = os.path.join(self.cache_dir, f"{self.chunk_id}.jpg")
 
     def __lt__(self, other):
-        return self.deadline < other.deadline
+        return self.priority < other.priority
 
     def __repr__(self):
         #return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
@@ -391,8 +392,11 @@ class Tile(object):
 
     def set_deadline(self):
         global startup_time, last_read_time
-
+        
         now = time.time()
+        self.deadline = now + self.default_timeout
+        return
+        ##########################################################
         if now - last_read_time > 120:  # sitting idle for 2 minutes, treat like a startup
             startup_time = now
 
@@ -735,14 +739,48 @@ class Tile(object):
 
         log.debug(f"GET_IMG: {self} : Retrieve mipmap for ZOOM: {zoom} MIPMAP: {mipmap}")
         data_updated = False
-        log.debug(f"GET_IMG: {self} submitting chunks.")
+
+        # load cached chunks
+        have_all_tiles = True
         for chunk in chunks:
             if not chunk.ready.is_set():
-                #log.info(f"SUBMIT: {chunk}")
-                chunk.priority = self.min_zoom - mipmap 
-                chunk.deadline = self.deadline
-                chunk_getter.submit(chunk)
-                data_updated = True
+                if chunk.get_cache():
+                    chunk.ready.set()
+                    data_updated = True
+                else:
+                    #print(f"not in cache: {chunk}")
+                    have_all_tiles = False
+
+        bg_chunk = None
+
+        # only submit missing chunks to the workers
+        if not have_all_tiles:
+            if mipmap <= 2:         # more than 16 tiles, its worth a bg image
+                steps = 4 - mipmap  # steps to enlarge
+                scale = 1 << steps
+                bg_col = col // scale
+                bg_row = row // scale
+                bg_width = width // scale
+                bg_height = height // scale
+                bg_zoom = zoom - steps
+
+                #print(f"tile_zoom {self.zoom}, mipmap {mipmap}, width: {bg_width}, crz: {bg_col} {bg_row} {bg_zoom}")
+                
+                assert bg_width == 1
+                # submit in front of the other chunks
+                bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, 0, cache_dir=self.cache_dir)
+                bg_chunk.deadline = self.deadline - 3.0
+                chunk_getter.submit(bg_chunk)
+            
+            log.debug(f"GET_IMG: {self} submitting chunks.")
+            for chunk in chunks:
+                if not chunk.ready.is_set():
+                    #log.info(f"SUBMIT: {chunk}")
+                    #chunk.priority = self.min_zoom - mipmap 
+                    chunk.priority = self.deadline
+                    chunk.deadline = self.deadline
+                    chunk_getter.submit(chunk)
+                    data_updated = True
 
         # We've already determined this mipmap is not marked as 'retrieved' so we should create 
         # a new image, regardless here.
@@ -752,8 +790,26 @@ class Tile(object):
 
         #outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
         #new_im = Image.new('RGBA', (256*width,256*height), (250,250,250))
+
+        new_im = None
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
-        new_im = AoImage.new('RGBA', (256*width,256*height), (85,74,41)) # dark shade of a soil like color
+
+        if bg_chunk:
+            if bg_chunk.ready.wait() and bg_chunk.data:
+                #print(f"bg_chunk {bg_chunk} retrieved")
+                bg_img = AoImage.load_from_memory(bg_chunk.data)
+                if bg_img:
+                    new_im = bg_img.enlarge_2(steps)
+            else:
+                print(f"failed to retrieve bg_chunk {bg_chunk}")
+
+        if new_im == None:
+            if have_all_tiles:
+                bg_color = (0, 0, 0)       # black is much cheaper
+            else:
+                bg_color = (85,74,41)      # dark shade of a soil like color
+            new_im = AoImage.new('RGBA', (256*width,256*height), bg_color) 
+
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
             ret = chunk.ready.wait()
