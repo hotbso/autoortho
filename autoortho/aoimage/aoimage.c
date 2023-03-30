@@ -198,8 +198,7 @@ AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t q
         goto out;
     }
 
-    //fprintf(stderr, "jpg_size: %ld\n", out_jpg_size);
-    fd = open(filename, O_CREAT|O_WRONLY|O_BINARY);
+    fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY|O_BINARY, 0664);
     if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
 		goto out;
