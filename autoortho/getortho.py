@@ -157,7 +157,7 @@ class ChunkGetter(Getter):
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
-chunk_getter = ChunkGetter(32)
+chunk_getter = ChunkGetter(24)
 
 #class TileGetter(Getter):
 #    def get(self, obj, *args, **kwargs):
@@ -244,7 +244,7 @@ class Chunk(object):
         remaining_time = self.deadline - time.time()
 
         # expired before being retrieved
-        if remaining_time <= 1.0:
+        if remaining_time <= 0.3:
             log.error(f"deadline not met for {self}, remaining {remaining_time:0.1f}")
             self.ready.set()    # results in a black hole
             return True
@@ -305,9 +305,6 @@ class Chunk(object):
         #self.img.close()
         #del(self.img)
 
-startup_time = None
-last_read_time = 0
-
 class Tile(object):
     row = -1
     col = -1
@@ -330,9 +327,11 @@ class Tile(object):
 
     refs = None
 
-    default_timeout = 12.0
+    default_timeout = 3.0
     has_timeouts = False
     last_read_pos = -1      # position after last read
+    # just ensure that it's always defined with a reasonable value
+    deadline = time.time() + default_timeout
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -381,8 +380,6 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
 
-        # just ensure that it's always defined with a reasonable value
-        self.deadline = time.time() + self.default_timeout
 
     def __lt__(self, other):
         return self.priority < other.priority
@@ -390,28 +387,6 @@ class Tile(object):
     def __repr__(self):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
 
-    def set_deadline(self):
-        global startup_time, last_read_time
-        
-        now = time.time()
-        self.deadline = now + self.default_timeout
-        return
-        ##########################################################
-        if now - last_read_time > 120:  # sitting idle for 2 minutes, treat like a startup
-            startup_time = now
-
-        last_read_time = now
-
-        # After startup allow a longer deadline to ease cache warming
-        # Just in case the plane is spawned at an uncached airport
-        if now >  startup_time + 180.0:
-            self.default_timeout = 12.0
-        elif now > startup_time + 120.0:
-            self.default_timeout = 30.0
-        else:
-            self.default_timeout = 60.0
-
-        self.deadline = now + self.default_timeout
 
     @locked
     def _create_chunks(self, quick_zoom=0):
@@ -650,7 +625,7 @@ class Tile(object):
         # new read cycle or continued read?
         if offset != self.last_read_pos:
             #print(f"new cycle: {self.last_read_pos} {offset}")
-            self.set_deadline()
+            self.deadline = time.time() + self.default_timeout
 
         if offset == 0:
             # If offset = 0, read the header
@@ -769,7 +744,7 @@ class Tile(object):
                 assert bg_width == 1
                 # submit in front of the other chunks
                 bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, 0, cache_dir=self.cache_dir)
-                bg_chunk.deadline = self.deadline - 3.0
+                bg_chunk.deadline = self.deadline - 1.0
                 chunk_getter.submit(bg_chunk)
             
             log.debug(f"GET_IMG: {self} submitting chunks.")
