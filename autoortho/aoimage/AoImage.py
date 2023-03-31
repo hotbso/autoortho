@@ -66,13 +66,18 @@ class AoImage(Structure):
 
         return half
 
-    def enlarge_2(self, steps):
+    def enlarge_2(self, steps, height_only = None):
         """
         Enlarge by factor 2^steps
         """
         assert 1 <= steps and steps <= 4    # assert a reasonable range
         new = AoImage()
-        if not _aoi.aoimage_enlarge_2(self, new, steps):
+        height = self._height;
+        if height_only != None:
+            assert height_only <= self._height
+            height = height_only
+
+        if not _aoi.aoimage_enlarge_2(self, new, steps, height):
             log.error(f"AoImage.enlarge_2 error: {new._errmsg.decode()}")
             return None
 
@@ -151,7 +156,7 @@ _aoi.aoimage_read_jpg.argtypes = (c_char_p, POINTER(AoImage))
 _aoi.aoimage_write_jpg.argtypes = (c_char_p, POINTER(AoImage), c_int32)
 _aoi.aoimage_2_rgba.argtypes = (POINTER(AoImage), POINTER(AoImage))
 _aoi.aoimage_reduce_2.argtypes = (POINTER(AoImage), POINTER(AoImage))
-_aoi.aoimage_enlarge_2.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32)
+_aoi.aoimage_enlarge_2.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32, c_uint32)
 _aoi.aoimage_delete.argtypes = (POINTER(AoImage),)
 _aoi.aoimage_create.argtypes = (POINTER(AoImage), c_uint32, c_uint32, c_uint32, c_uint32, c_uint32)
 _aoi.aoimage_tobytes.argtypes = (POINTER(AoImage), c_char_p)

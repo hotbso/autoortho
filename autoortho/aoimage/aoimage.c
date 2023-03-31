@@ -278,8 +278,12 @@ AOIAPI int32_t aoimage_reduce_2(const aoimage_t *s_img, aoimage_t *d_img) {
     return TRUE;
 }
 
-AOIAPI int32_t aoimage_enlarge_2(const aoimage_t *s_img, aoimage_t *d_img, uint32_t steps) {
+AOIAPI int32_t aoimage_enlarge_2(const aoimage_t *s_img, aoimage_t *d_img, uint32_t steps, uint32_t s_height_only) {
     assert(NULL != s_img->ptr);
+    assert(s_height_only <= s_img->height);
+
+    if (0 == s_height_only)
+        s_height_only = s_img->height;
 
     //aoimage_dump("aoimage_reduce_2 s_img", s_img);
     int factor = 1 << steps;
@@ -293,11 +297,10 @@ AOIAPI int32_t aoimage_enlarge_2(const aoimage_t *s_img, aoimage_t *d_img, uint3
     }
 
     const pixel_t *sptr = (pixel_t *)s_img->ptr;      // source row start
-    const pixel_t *send = (pixel_t *)(s_img->ptr + slen);
     pixel_t *dptr = (pixel_t *)dest;
     int d_row_length = s_img->width * factor;   // in pixels
 
-    for (int sr = 0; sr < s_img->height; sr++) {
+    for (int sr = 0; sr < s_height_only; sr++) {
         pixel_t *drptr = dptr;                  // start of destination row
 
         // copy expand to destination row
@@ -315,9 +318,6 @@ AOIAPI int32_t aoimage_enlarge_2(const aoimage_t *s_img, aoimage_t *d_img, uint3
         }
         assert((uint8_t *)dptr <= dest + dlen);
     }
-
-    assert(sptr == send);
-    assert((uint8_t *)dptr == dest + dlen);
 
     d_img->ptr = dest;
     d_img->width = s_img->width * factor;

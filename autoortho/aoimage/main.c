@@ -32,11 +32,18 @@ int main(void) {
     }
 
     aoimage_t e16_img;
-    if(!aoimage_enlarge_2(&bg_img, &e16_img, 4)) {
+    if(!aoimage_enlarge_2(&bg_img, &e16_img, 4, 0)) {
         printf("Error enlarging image\n");
         exit(1);
     }
 
     aoimage_write_jpg("en_16.jpg", &e16_img, 50);
 
+    aoimage_t e16_r0_img;
+    if(!aoimage_enlarge_2(&bg_img, &e16_r0_img, 4, 128)) {
+        printf("Error enlarging image\n");
+        exit(1);
+    }
+
+    aoimage_write_jpg("en_16_r0.jpg", &e16_r0_img, 50);
 }

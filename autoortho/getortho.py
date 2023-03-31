@@ -157,7 +157,7 @@ class ChunkGetter(Getter):
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
-chunk_getter = ChunkGetter(24)
+chunk_getter = ChunkGetter(32)
 
 #class TileGetter(Getter):
 #    def get(self, obj, *args, **kwargs):
@@ -280,7 +280,7 @@ class Chunk(object):
         req = Request(url, headers=header)
         resp = 0
         try:
-            resp = urlopen(req, timeout=remaining_time)
+            resp = urlopen(req, timeout=max(1, remaining_time))
             if resp.status != 200:
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
@@ -327,11 +327,14 @@ class Tile(object):
 
     refs = None
 
-    default_timeout = 3.0
+    default_timeout = 5.0
     has_timeouts = False
     last_read_pos = -1      # position after last read
     # just ensure that it's always defined with a reasonable value
     deadline = time.time() + default_timeout
+
+    # a global zoom out of everything
+    zoom_out = 1
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -535,9 +538,9 @@ class Tile(object):
 
         mipmap = self.find_mipmap_pos(offset)
         log.debug(f"Get_bytes for mipmap {mipmap} ...")
-        if mipmap > 4:
+        if mipmap > 4 - self.zoom_out:
             # Just get the entire mipmap
-            self.get_mipmap(4)
+            self.get_mipmap(4 - self.zoom_out)
             return True
 
         # Exit if already retrieved
@@ -687,7 +690,7 @@ class Tile(object):
         #
 
         # Get effective zoom
-        zoom = self.zoom - mipmap
+        zoom = self.zoom - mipmap - self.zoom_out
         log.debug(f"GET_IMG: Default zoom: {self.zoom}, Requested Mipmap: {mipmap}, Requested mipmap zoom: {zoom}")
         col, row, width, height, zoom, mipmap = self._get_quick_zoom(zoom)
         log.debug(f"Will use:  Zoom: {zoom},  Mipmap: {mipmap}")
@@ -701,10 +704,12 @@ class Tile(object):
         startchunk = 0
         endchunk = None
         # Determine start and end chunk
-        chunks_per_row = 16 >> mipmap
+        chunks_per_row = 16  >> mipmap
         if startrow:
+            startrow //= (1 << self.zoom_out)
             startchunk = startrow * chunks_per_row
         if endrow is not None:
+            endrow //= (1 << self.zoom_out)
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
 
@@ -812,6 +817,13 @@ class Tile(object):
                 log.warning(f"Failed {chunk}")
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
+        if self.zoom_out:
+            #print(f"mipmap: {mipmap} startrow: {startrow} endrow: {endrow} height: {new_im._height}")
+            height_only = 0
+            # if endrow != None:
+                # height_only = min(height, (endrow + 1)) * 256       # endrow may reach beyond the current img
+            new_im = new_im.enlarge_2(self.zoom_out, height_only)
+
         return new_im
 
 
