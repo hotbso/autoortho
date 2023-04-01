@@ -186,7 +186,6 @@ class Chunk(object):
     fetchtime = 0
 
     ready = None
-    data = None
     img = None
     deadline = 0
 
@@ -221,18 +220,17 @@ class Chunk(object):
 
     def get_cache(self):
         global STATS
-        if os.path.isfile(self.cache_path):
+        self.img = AoImage.open(self.cache_path, log_error = False)
+        if self.img:
             STATS['chunk_hit'] = STATS.get('chunk_hit', 0) + 1
-            with open(self.cache_path, 'rb') as h:
-                self.data = h.read()
             return True
         else:
             STATS['chunk_miss'] = STATS.get('chunk_miss', 0) + 1
             return False
 
-    def save_cache(self):
+    def save_cache(self, data):
         with open(self.cache_path, 'wb') as h:
-            h.write(self.data)
+            h.write(data)
 
     def get(self, idx=0):
         #log.debug(f"Getting {self}") 
@@ -245,7 +243,7 @@ class Chunk(object):
 
         # expired before being retrieved
         if remaining_time <= 0.3:
-            log.error(f"deadline not met for {self}, remaining {remaining_time:0.1f}")
+            log.info(f"deadline not met for {self}")
             self.ready.set()    # results in a black hole
             return True
             
@@ -279,13 +277,14 @@ class Chunk(object):
 
         req = Request(url, headers=header)
         resp = 0
+        data = None
         try:
             resp = urlopen(req, timeout=max(1, remaining_time))
             if resp.status != 200:
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
-            self.data = resp.read()
-            STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(self.data)
+            data = resp.read()
+            STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(data)
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
             # FALLTHROUGH
@@ -295,15 +294,17 @@ class Chunk(object):
 
         self.fetchtime = time.time() - self.starttime
 
-        if self.data:
-            self.save_cache()
+        if data:
+            self.save_cache(data)
+            self.img = AoImage.load_from_memory(data, log_error = False)
+
         self.ready.set()
         return True
 
     def close(self):
-        self.data = None
-        #self.img.close()
-        #del(self.img)
+        if self.img != None:
+            self.img.close()    # immediate deallocate resources
+        self.img = None
 
 class Tile(object):
     row = -1
@@ -777,11 +778,9 @@ class Tile(object):
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
 
         if bg_chunk:
-            if bg_chunk.ready.wait() and bg_chunk.data:
+            if bg_chunk.ready.wait() and bg_chunk.img:
                 #print(f"bg_chunk {bg_chunk} retrieved")
-                bg_img = AoImage.load_from_memory(bg_chunk.data)
-                if bg_img:
-                    new_im = bg_img.enlarge_2(steps)
+                new_im = bg_chunk.img.enlarge_2(steps)
             else:
                 print(f"failed to retrieve bg_chunk {bg_chunk}")
 
@@ -795,28 +794,20 @@ class Tile(object):
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
             ret = chunk.ready.wait()
-            if not ret or chunk.data == None:   # deadline not met
+            if not ret or chunk.img == None:   # deadline not met
                 self.has_timeouts = True
                 continue
 
             start_x = int((chunk.width) * (chunk.col - col))
             start_y = int((chunk.height) * (chunk.row - row))
 
-            if not chunk.data:
-                log.error(f"BAD CHUNK DATA")
-
-            chunk_img = AoImage.load_from_memory(chunk.data)
-            if chunk_img:
-                new_im.paste(
-                    chunk_img,
-                    #Image.open(BytesIO(chunk.data)).convert("RGBA"),
-                    (
-                        start_x,
-                        start_y
-                    )
+            new_im.paste(
+                chunk.img,
+                (
+                    start_x,
+                    start_y
                 )
-            else:
-                log.warning(f"Failed {chunk}")
+            )
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if self.global_zoom_out:
@@ -884,9 +875,7 @@ class Tile(object):
                 for chunk in chunks:
                     chunk.close()
             self.chunks = {}
-                    #del(chunk.data)
-                    #del(chunk.img)
-        #return outfile
+
         log.debug("Results:")
         log.debug(self.dds.mipmap_list)
         return True
