@@ -70,11 +70,11 @@ class FlightTracker(object):
                     # We were connected but lost a packet.  First just log
                     # this
                     self.num_failures += 1
-                    log.info("We are connected but a packet timed out.  NBD.")
+                    #log.info("We are connected but a packet timed out.  NBD.")
 
                 if self.num_failures > 3:
                     # We are transitioning states
-                    log.info("FT: Flight disconnected.")
+                    #log.info("FT: Flight disconnected.")
                     self.start_time = time.time()
                     self.connected = False
 
