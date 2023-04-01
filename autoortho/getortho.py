@@ -334,7 +334,7 @@ class Tile(object):
     deadline = time.time() + default_timeout
 
     # a global zoom out of everything
-    zoom_out = 1
+    global_zoom_out = 1
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -538,9 +538,9 @@ class Tile(object):
 
         mipmap = self.find_mipmap_pos(offset)
         log.debug(f"Get_bytes for mipmap {mipmap} ...")
-        if mipmap > 4 - self.zoom_out:
+        if mipmap > 4 - self.global_zoom_out:
             # Just get the entire mipmap
-            self.get_mipmap(4 - self.zoom_out)
+            self.get_mipmap(4 - self.global_zoom_out)
             return True
 
         # Exit if already retrieved
@@ -689,8 +689,11 @@ class Tile(object):
         # Get an image for a particular mipmap
         #
 
+        #print(f"{self}")
+        #print(f"1: zoom: {self.zoom}, Mipmap: {mipmap}, startrow: {startrow} endrow: {endrow}")
+
         # Get effective zoom
-        zoom = self.zoom - mipmap - self.zoom_out
+        zoom = self.zoom - mipmap - self.global_zoom_out
         log.debug(f"GET_IMG: Default zoom: {self.zoom}, Requested Mipmap: {mipmap}, Requested mipmap zoom: {zoom}")
         col, row, width, height, zoom, mipmap = self._get_quick_zoom(zoom)
         log.debug(f"Will use:  Zoom: {zoom},  Mipmap: {mipmap}")
@@ -706,12 +709,13 @@ class Tile(object):
         # Determine start and end chunk
         chunks_per_row = 16  >> mipmap
         if startrow:
-            startrow //= (1 << self.zoom_out)
+            startrow >> self.global_zoom_out
             startchunk = startrow * chunks_per_row
         if endrow is not None:
-            endrow //= (1 << self.zoom_out)
+            endrow >> self.global_zoom_out
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
+        #print(f"3: zoom: {self.zoom}, Mipmap: {mipmap}, Requested zoom: {zoom} startrow: {startrow} endrow: {endrow}")
 
         self._create_chunks(zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
@@ -735,13 +739,12 @@ class Tile(object):
 
         # only submit missing chunks to the workers
         if not have_all_tiles:
-            if mipmap <= 2:         # more than 16 tiles, its worth a bg image
+            if mipmap <= 2:         # more than 16 chunks, its worth a bg image
                 steps = 4 - mipmap  # steps to enlarge
-                scale = 1 << steps
-                bg_col = col // scale
-                bg_row = row // scale
-                bg_width = width // scale
-                bg_height = height // scale
+                bg_col = col >> steps
+                bg_row = row >> steps
+                bg_width = width >> steps
+                bg_height = height >> steps
                 bg_zoom = zoom - steps
 
                 #print(f"tile_zoom {self.zoom}, mipmap {mipmap}, width: {bg_width}, crz: {bg_col} {bg_row} {bg_zoom}")
@@ -756,7 +759,6 @@ class Tile(object):
             for chunk in chunks:
                 if not chunk.ready.is_set():
                     #log.info(f"SUBMIT: {chunk}")
-                    #chunk.priority = self.min_zoom - mipmap 
                     chunk.priority = self.deadline
                     chunk.deadline = self.deadline
                     chunk_getter.submit(chunk)
@@ -817,12 +819,16 @@ class Tile(object):
                 log.warning(f"Failed {chunk}")
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
-        if self.zoom_out:
+        if self.global_zoom_out:
             #print(f"mipmap: {mipmap} startrow: {startrow} endrow: {endrow} height: {new_im._height}")
             height_only = 0
-            # if endrow != None:
-                # height_only = min(height, (endrow + 1)) * 256       # endrow may reach beyond the current img
-            new_im = new_im.enlarge_2(self.zoom_out, height_only)
+            # quickfix for the 85% effect: Don't enlarge completely for a header only read
+            if endrow != None and endrow == 0:
+                #height_only = min(height, (endrow + 1)) * 256       # endrow may reach beyond the current img
+                #print(f"height: {height}, height_only: {height_only}")
+                height_only = 256 >>  self.global_zoom_out
+
+            new_im = new_im.enlarge_2(self.global_zoom_out, height_only)
 
         return new_im
 
