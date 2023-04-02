@@ -812,7 +812,7 @@ class Tile(object):
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if self.global_zoom_out:
             #print(f"mipmap: {mipmap} startrow: {startrow} endrow: {endrow} height: {new_im._height}")
-            height_only = 0
+            height_only = None
             # quickfix for the 85% effect: Don't enlarge completely for a header only read
             if endrow != None and endrow == 0:
                 #height_only = min(height, (endrow + 1)) * 256       # endrow may reach beyond the current img
