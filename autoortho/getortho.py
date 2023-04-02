@@ -982,21 +982,15 @@ class TileCacher(object):
         tile_id = f"{row}_{col}_{map_type}_{zoom}"
         return tile_id
 
-    def show_stats(self):
-        process = psutil.Process(os.getpid())
-        cur_mem = process.memory_info().rss
-        if self.enable_cache:
-            log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits}")
-        log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
-
     def clean(self):
         log.info(f"Started tile clean thread.  Mem limit {self.cache_mem_lim}")
         while True:
             process = psutil.Process(os.getpid())
             cur_mem = process.memory_info().rss
-
-            self.show_stats()
-            time.sleep(15)
+            rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
+            log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
+            log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
+            time.sleep(5)
             
             if not self.enable_cache:
                 continue
@@ -1022,7 +1016,6 @@ class TileCacher(object):
                 for stat in top_stats[:10]:
                         log.info(stat)
 
-            time.sleep(15)
 
     def _get_tile(self, row, col, map_type, zoom):
         
