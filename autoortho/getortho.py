@@ -284,7 +284,6 @@ class Chunk(object):
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
             data = resp.read()
-            STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(data)
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
             # FALLTHROUGH
@@ -295,6 +294,7 @@ class Chunk(object):
         self.fetchtime = time.time() - self.starttime
 
         if data:
+            STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(data)
             self.save_cache(data)
             self.img = AoImage.load_from_memory(data, log_error = False)
 
@@ -990,7 +990,7 @@ class TileCacher(object):
             rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
             log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
             log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
-            time.sleep(5)
+            time.sleep(15)
             
             if not self.enable_cache:
                 continue
@@ -1003,8 +1003,7 @@ class TileCacher(object):
                         if t.refs <= 0:
                             t = self.tiles.pop(i)
                             t.close()
-                            t = None
-                            del(t)
+                        t = None
                 cur_mem = process.memory_info().rss
 
 
