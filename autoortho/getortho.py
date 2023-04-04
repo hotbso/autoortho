@@ -723,18 +723,18 @@ class Tile(object):
         log.debug(f"Start chunk: {startchunk}  End chunk: {endchunk}  Chunklen {len(self.chunks[zoom])}")
 
         log.debug(f"GET_IMG: {self} : Retrieve mipmap for ZOOM: {zoom} MIPMAP: {mipmap}")
-        data_updated = False
 
+        log.debug(f"GET_IMG: {self} retrieving/submitting chunks.")
         # load cached chunks
         have_all_tiles = True
         for chunk in chunks:
-            if not chunk.ready.is_set():
-                if chunk.get_cache():
-                    chunk.ready.set()
-                    data_updated = True
-                else:
-                    #print(f"not in cache: {chunk}")
-                    have_all_tiles = False
+            if chunk.img is None:
+                chunk.get_cache()
+
+            if chunk.img is not None:
+                chunk.ready.set()
+            else:
+                have_all_tiles = False
 
         bg_chunk = None
 
@@ -756,23 +756,13 @@ class Tile(object):
                 bg_chunk.deadline = self.deadline - 1.0
                 chunk_getter.submit(bg_chunk)
             
-            log.debug(f"GET_IMG: {self} submitting chunks.")
             for chunk in chunks:
-                if not chunk.ready.is_set():
+                if chunk.img is None:
                     #log.info(f"SUBMIT: {chunk}")
+                    chunk.ready.clear()
                     chunk.priority = self.deadline
                     chunk.deadline = self.deadline
                     chunk_getter.submit(chunk)
-                    data_updated = True
-
-        # We've already determined this mipmap is not marked as 'retrieved' so we should create 
-        # a new image, regardless here.
-        #if not data_updated:
-        #    log.info("No updates to chunks.  Exit.")
-        #    return False
-
-        #outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
-        #new_im = Image.new('RGBA', (256*width,256*height), (250,250,250))
 
         new_im = None
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
@@ -793,8 +783,8 @@ class Tile(object):
 
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
-            ret = chunk.ready.wait()
-            if not ret or chunk.img == None:   # deadline not met
+            chunk.ready.wait()
+            if chunk.img is None:   # deadline not met
                 self.has_timeouts = True
                 continue
 
@@ -811,13 +801,9 @@ class Tile(object):
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if self.global_zoom_out:
-            #print(f"mipmap: {mipmap} startrow: {startrow} endrow: {endrow} height: {new_im._height}")
             height_only = None
-            # quickfix for the 85% effect: Don't enlarge completely for a header only read
-            if endrow != None and endrow == 0:
-                #height_only = min(height, (endrow + 1)) * 256       # endrow may reach beyond the current img
-                #print(f"height: {height}, height_only: {height_only}")
-                height_only = 256 >>  self.global_zoom_out
+            if endrow is not None:
+                height_only = min(height, (endrow + 1)) * 256    # endrow may reach beyond the current img
 
             new_im = new_im.enlarge_2(self.global_zoom_out, height_only)
 
@@ -902,7 +888,6 @@ class Tile(object):
             else:
                 log.debug(f"TILE: {self} retrieved mipmap 0, full read of mipmap! {self.bytes_read}.")
 
-
         if self.refs > 0:
             log.warning(f"TILE: Trying to close, but has refs: {self.refs}")
             return
@@ -974,7 +959,8 @@ class TileCacher(object):
 
         if platform.system() == 'Windows':
             # Windows doesn't handle FS cache the same way so enable here.
-            self.enable_cache = True
+            #self.enable_cache = True   # I don't see and advantage but get artifacts that look like stale data
+            pass
 
     def _to_tile_id(self, row, col, map_type, zoom):
         if self.maptype_override:
