@@ -23,13 +23,13 @@ def replay():
 
             if op == "O":
                 #print(f"open {key}")
-                tile = tc._get_tile(*key)
-                opened_tiles[key] = tile
+                t = tc._open_tile(row, col, maptype, zoom)
+                del(t)
+                opened_tiles[key] = 1
             elif op == "C":
                 #print(f"close {key}")
-                tile = opened_tiles[key]
-                del(opened_tiles[key])
                 tc._close_tile(*key)
+                del(opened_tiles[key])
                 #print(f"{len(opened_tiles)}")
  
             elif op == "R":
@@ -37,11 +37,12 @@ def replay():
                 length = int(fields[6])
                 #
                 #print(f"read {key} {offs} {length}")
-                tile = opened_tiles[key]
-                buf = tile.read_dds_bytes(offs, length)
+                t = tc._get_tile(*key)
+                buf = t.read_dds_bytes(offs, length)
                 # lb = len(buf)
                 # if lb != length:
                     # print(f"size mismatch {lb} {length}!")
+                del(t)
 
 def main(filename = "ao.stats"):
     profiler.enable()
