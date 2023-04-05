@@ -88,7 +88,7 @@ class AoImage(Structure):
         Convenience function to write jpeg.
         """
         if not _aoi.aoimage_write_jpg(filename.encode(), self, quality):
-            log.error(f"AoImage.new error: {new._errmsg.decode()}")
+            log.error(f"AoImage.write_jpg error: {self._errmsg.decode()}")
 
     def tobytes(self):
         """
