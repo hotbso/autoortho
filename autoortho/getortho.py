@@ -306,6 +306,8 @@ class Chunk(object):
             self.img.close()    # immediate deallocate resources
         self.img = None
 
+jpg_seq = 1
+
 class Tile(object):
     row = -1
     col = -1
@@ -539,9 +541,9 @@ class Tile(object):
 
         mipmap = self.find_mipmap_pos(offset)
         log.debug(f"Get_bytes for mipmap {mipmap} ...")
-        if mipmap > 4 - self.global_zoom_out:
+        if mipmap > 4:
             # Just get the entire mipmap
-            self.get_mipmap(4 - self.global_zoom_out)
+            self.get_mipmap(4)
             return True
 
         # Exit if already retrieved
@@ -689,13 +691,14 @@ class Tile(object):
         #
         # Get an image for a particular mipmap
         #
-
+        mm_in = mipmap
+        sr = startrow
+        er = endrow
         #print(f"{self}")
         #print(f"1: zoom: {self.zoom}, Mipmap: {mipmap}, startrow: {startrow} endrow: {endrow}")
 
         # Get effective zoom
         gzo_effective = min(self.global_zoom_out, max(0, 4 - mipmap))
-        assert mipmap + gzo_effective <= 4
         zoom = self.zoom - (mipmap + gzo_effective)
 
         log.debug(f"GET_IMG: Default zoom: {self.zoom}, Requested Mipmap: {mipmap}, Requested mipmap zoom: {zoom}")
@@ -713,10 +716,10 @@ class Tile(object):
         # Determine start and end chunk
         chunks_per_row = 16  >> mipmap
         if startrow:
-            startrow >> gzo_effective
+            startrow >>= gzo_effective
             startchunk = startrow * chunks_per_row
         if endrow is not None:
-            endrow >> gzo_effective
+            endrow >>= gzo_effective
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
         #print(f"3: zoom: {self.zoom}, Mipmap: {mipmap}, Requested zoom: {zoom} startrow: {startrow} endrow: {endrow}")
@@ -810,6 +813,9 @@ class Tile(object):
 
             new_im = new_im.enlarge_2(gzo_effective, height_only)
 
+        #fn = f"e:\\test\\{self.id}_{mm_in}_{sr}_{er}.jpg"
+        #print(fn)
+        #new_im.write_jpg(fn, 30)
         return new_im
 
 
