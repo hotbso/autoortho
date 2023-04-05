@@ -694,7 +694,10 @@ class Tile(object):
         #print(f"1: zoom: {self.zoom}, Mipmap: {mipmap}, startrow: {startrow} endrow: {endrow}")
 
         # Get effective zoom
-        zoom = self.zoom - mipmap - self.global_zoom_out
+        gzo_effective = min(self.global_zoom_out, max(0, 4 - mipmap))
+        assert mipmap + gzo_effective <= 4
+        zoom = self.zoom - (mipmap + gzo_effective)
+
         log.debug(f"GET_IMG: Default zoom: {self.zoom}, Requested Mipmap: {mipmap}, Requested mipmap zoom: {zoom}")
         col, row, width, height, zoom, mipmap = self._get_quick_zoom(zoom)
         log.debug(f"Will use:  Zoom: {zoom},  Mipmap: {mipmap}")
@@ -710,10 +713,10 @@ class Tile(object):
         # Determine start and end chunk
         chunks_per_row = 16  >> mipmap
         if startrow:
-            startrow >> self.global_zoom_out
+            startrow >> gzo_effective
             startchunk = startrow * chunks_per_row
         if endrow is not None:
-            endrow >> self.global_zoom_out
+            endrow >> gzo_effective
             endchunk = (endrow * chunks_per_row) + chunks_per_row
 
         #print(f"3: zoom: {self.zoom}, Mipmap: {mipmap}, Requested zoom: {zoom} startrow: {startrow} endrow: {endrow}")
@@ -800,12 +803,12 @@ class Tile(object):
             )
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
-        if self.global_zoom_out:
+        if gzo_effective > 0:
             height_only = None
             if endrow is not None:
                 height_only = min(height, (endrow + 1)) * 256    # endrow may reach beyond the current img
 
-            new_im = new_im.enlarge_2(self.global_zoom_out, height_only)
+            new_im = new_im.enlarge_2(gzo_effective, height_only)
 
         return new_im
 
