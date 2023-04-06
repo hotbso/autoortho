@@ -1033,6 +1033,9 @@ class TileCacher(object):
             elif tile.refs <= 0:
                 # Only in this case would this cache have made a difference
                 self.hits += 1
+                # That's a crude hack as obviously the retrieved flag is not properly maintained
+                for m in tile.dds.mipmap_list:
+                    m.retrieved = False
                 
             tile.refs += 1
         return tile
