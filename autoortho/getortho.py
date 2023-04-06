@@ -306,7 +306,6 @@ class Chunk(object):
             self.img.close()    # immediate deallocate resources
         self.img = None
 
-jpg_seq = 1
 
 class Tile(object):
     row = -1
@@ -691,9 +690,7 @@ class Tile(object):
         #
         # Get an image for a particular mipmap
         #
-        mm_in = mipmap
-        sr = startrow
-        er = endrow
+
         #print(f"{self}")
         #print(f"1: zoom: {self.zoom}, Mipmap: {mipmap}, startrow: {startrow} endrow: {endrow}")
 
@@ -732,7 +729,7 @@ class Tile(object):
 
         log.debug(f"GET_IMG: {self} retrieving/submitting chunks.")
         # load cached chunks
-        have_all_tiles = True
+        have_all_chunks = True
         for chunk in chunks:
             if chunk.img is None:
                 chunk.get_cache()
@@ -740,12 +737,12 @@ class Tile(object):
             if chunk.img is not None:
                 chunk.ready.set()
             else:
-                have_all_tiles = False
+                have_all_chunks = False
 
         bg_chunk = None
 
         # only submit missing chunks to the workers
-        if not have_all_tiles:
+        if not have_all_chunks:
             if mipmap <= 2:         # more than 16 chunks, its worth a bg image
                 steps = 4 - mipmap  # steps to enlarge
                 bg_col = col >> steps
@@ -758,8 +755,8 @@ class Tile(object):
                 
                 assert bg_width == 1
                 # submit in front of the other chunks
-                bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, 0, cache_dir=self.cache_dir)
-                bg_chunk.deadline = self.deadline - 1.0
+                bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, -1, cache_dir=self.cache_dir)
+                bg_chunk.deadline = self.deadline - 0.5
                 chunk_getter.submit(bg_chunk)
             
             for chunk in chunks:
@@ -775,13 +772,12 @@ class Tile(object):
 
         if bg_chunk:
             if bg_chunk.ready.wait() and bg_chunk.img:
-                #print(f"bg_chunk {bg_chunk} retrieved")
                 new_im = bg_chunk.img.enlarge_2(steps)
             else:
-                print(f"failed to retrieve bg_chunk {bg_chunk}")
+                log.warning(f"failed to retrieve bg_chunk {bg_chunk}")
 
         if new_im == None:
-            if have_all_tiles:
+            if have_all_chunks:
                 bg_color = (0, 0, 0)       # black is much cheaper
             else:
                 bg_color = (85,74,41)      # dark shade of a soil like color
@@ -813,9 +809,6 @@ class Tile(object):
 
             new_im = new_im.enlarge_2(gzo_effective, height_only)
 
-        #fn = f"e:\\test\\{self.id}_{mm_in}_{sr}_{er}.jpg"
-        #print(fn)
-        #new_im.write_jpg(fn, 30)
         return new_im
 
 
@@ -968,7 +961,7 @@ class TileCacher(object):
 
         if platform.system() == 'Windows':
             # Windows doesn't handle FS cache the same way so enable here.
-            #self.enable_cache = True   # I don't see and advantage but get artifacts that look like stale data
+            #self.enable_cache = True   # does not make a difference for me but generates artifacts
             pass
 
     def _to_tile_id(self, row, col, map_type, zoom):
