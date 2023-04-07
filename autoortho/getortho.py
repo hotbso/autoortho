@@ -704,8 +704,8 @@ class Tile(object):
 
     
         log.debug(f"GET_IMG: MM List before { {x.idx:x.retrieved for x in self.dds.mipmap_list} }")
-        if self.dds.mipmap_list[mipmap].retrieved:
-            log.debug(f"GET_IMG: We already have mipmap {mipmap} for {self}")
+        if self.dds.mipmap_list[mipmap - gzo_effective].retrieved:
+            log.debug(f"GET_IMG: We already have mipmap {mipmap - gzo_effective} for {self}")
             return
 
         startchunk = 0
@@ -961,7 +961,7 @@ class TileCacher(object):
 
         if platform.system() == 'Windows':
             # Windows doesn't handle FS cache the same way so enable here.
-            #self.enable_cache = True   # does not make a difference for me but generates artifacts
+            self.enable_cache = True
             pass
 
     def _to_tile_id(self, row, col, map_type, zoom):
@@ -1033,10 +1033,7 @@ class TileCacher(object):
             elif tile.refs <= 0:
                 # Only in this case would this cache have made a difference
                 self.hits += 1
-                # That's a crude hack as obviously the retrieved flag is not properly maintained
-                for m in tile.dds.mipmap_list:
-                    m.retrieved = False
-                
+
             tile.refs += 1
         return tile
 
