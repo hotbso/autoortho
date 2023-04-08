@@ -1043,12 +1043,17 @@ class TileCacher(object):
         with self.tc_lock:
             t = self.tiles.get(tile_id)
             if not t:
-                log.warning(f"Attmpted to close unknown tile {tile_id}!")
+                log.warning(f"Attempted to close unknown tile {tile_id}!")
                 return False
 
             t.refs -= 1
 
-            if self.enable_cache and not t.has_timeouts: # and not t.should_close():
+            if self.enable_cache:
+                if t.has_timeouts:
+                    # mark as not retrieved but keep other cached data
+                    for m in t.dds.mipmap_list:
+                        m.retrieved = False
+
                 log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
                 t.last_read_pos = -1 # so a revive from the cache starts a new cycle
                 return True
@@ -1058,7 +1063,6 @@ class TileCacher(object):
                 t = self.tiles.pop(tile_id)
                 t.close()
                 t = None
-                del(t)
             else:
                 log.debug(f"Still have {t.refs} refs for {tile_id}")
 
