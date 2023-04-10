@@ -284,6 +284,11 @@ class Chunk(object):
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
             data = resp.read()
+            if data[:3] != b'\xFF\xD8\xFF':
+                # FFD8FF identifies image as a JPEG
+                log.debug(f"Chunk {self} is not a JPEG! {data[:3]} URL: {url}")
+                data = None
+                # FALLTHROUGH
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
             # FALLTHROUGH
