@@ -307,8 +307,6 @@ class Chunk(object):
         return True
 
     def close(self):
-        if self.img != None:
-            self.img.close()    # immediate deallocate resources
         self.img = None
 
 
@@ -605,8 +603,8 @@ class Tile(object):
 
         try:
             self.dds.gen_mipmaps(new_im, mipmap, mipmap, compress_len)
-        finally:
-            new_im.close()
+        except:
+            pass
 
         # We haven't fully retrieved so unset flag
         log.debug(f"UNSETTING RETRIEVED! {self}")
@@ -728,14 +726,14 @@ class Tile(object):
             if req_header:   # header only
                 hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
                 if hdr_im:
-                    print(f"opened {hdr_jpg_path}")
+                    #print(f"opened {hdr_jpg_path}")
                     if gzo_effective > 0:
                         hdr_im = hdr_im.enlarge_2(gzo_effective)
                     return hdr_im
             else:
                 new_im = AoImage.open(mm_jpg_path, log_error = False)
                 if new_im:      # whole image found?
-                    print(f"opened {mm_jpg_path}")
+                    #print(f"opened {mm_jpg_path}")
                     if gzo_effective > 0:
                         new_im = new_im.enlarge_2(gzo_effective)
                     return new_im
@@ -844,21 +842,19 @@ class Tile(object):
             if req_full_img:
                 new_im.write_jpg(mm_jpg_path, 50)
                 delete_chunks = True
-                print(f"saved {mm_jpg_path}")
+                #print(f"saved {mm_jpg_path}")
             elif req_header:
-                h = new_im._height
-                new_im._height = 256
-                new_im.write_jpg(hdr_jpg_path, 50)
-                new_im._height = h
+                new_im.write_jpg(hdr_jpg_path, 50, 256)
                 delete_chunks = True
-                print(f"saved {hdr_jpg_path}")
+                #print(f"saved {hdr_jpg_path}")
             if delete_chunks:
                 for chunk in chunks:
                     try:
                         os.remove(chunk.cache_path)
-                        print(f"deleted {chunk.cache_path}")
+                        #print(f"deleted {chunk.cache_path}")
                     except FileNotFoundError:
                         print(f"can't delete {chunk.cache_path}!")
+                self.chunks[zoom] = []
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if gzo_effective > 0:
@@ -899,9 +895,9 @@ class Tile(object):
             if mipmap == 0:
                 self.dds.gen_mipmaps(new_im, mipmap, 1) 
             else:
-                self.dds.gen_mipmaps(new_im, mipmap) 
-        finally:
-            new_im.close()
+                self.dds.gen_mipmaps(new_im, mipmap)
+        except:
+            pass
 
         end_time = time.time()
         self.ready.set()

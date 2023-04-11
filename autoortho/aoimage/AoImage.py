@@ -34,7 +34,7 @@ class AoImage(Structure):
         return f"ptr:  width: {self._width} height: {self._height} stride: {self._stride} channels: {self._channels}"
 
     def close(self):
-        _aoi.aoimage_delete(self)
+        log.warning("AoImage.close() is obsolete and does nothing")
 
     def convert(self, mode):
         """
@@ -83,12 +83,16 @@ class AoImage(Structure):
 
         return new
 
-    def write_jpg(self, filename, quality = 90):
+    def write_jpg(self, filename, quality = 90, height_only = 0):
         """
         Convenience function to write jpeg.
         """
+        h = self._height
+        if height_only > 0:
+            self._height = height_only 
         if not _aoi.aoimage_write_jpg(filename.encode(), self, quality):
             log.error(f"AoImage.write_jpg error: {self._errmsg.decode()}")
+        self._height = h
 
     def tobytes(self):
         """
