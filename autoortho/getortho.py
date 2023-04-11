@@ -699,6 +699,8 @@ class Tile(object):
         #print(f"{self}")
         #print(f"1: zoom: {self.zoom}, Mipmap: {mipmap}, startrow: {startrow} endrow: {endrow}")
 
+        req_mipmap = mipmap     # requested mm before gzo
+
         # Get effective zoom
         gzo_effective = min(self.global_zoom_out, max(0, 4 - mipmap))
         zoom = self.zoom - (mipmap + gzo_effective)
@@ -709,31 +711,36 @@ class Tile(object):
 
     
         log.debug(f"GET_IMG: MM List before { {x.idx:x.retrieved for x in self.dds.mipmap_list} }")
-        if self.dds.mipmap_list[mipmap - gzo_effective].retrieved:
-            log.debug(f"GET_IMG: We already have mipmap {mipmap - gzo_effective} for {self}")
+        if self.dds.mipmap_list[req_mipmap].retrieved:
+            log.debug(f"GET_IMG: We already have mipmap {req_mipmap} for {self}")
             return
 
+        req_header = req_mipmap == 0 and startrow == 0 and endrow == 0  # header only requested
+        req_full_img = startrow == 0 and endrow is None                 # full image requested
+
         new_im = None
-        mm_jpg_path = None
-        mm_jpg_height = 256 * height
-        if startrow == 0:
-            if endrow is None:
-                mm_jpg_path = os.path.join(self.cache_dir, f"m_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
+        hdr_im = None
+
+        mm_jpg_path = os.path.join(self.cache_dir, f"mm_{self.col}_{self.row}_{self.maptype}_{zoom}_{mipmap}.jpg")
+        hdr_jpg_path = os.path.join(self.cache_dir, f"hdr_{self.col}_{self.row}_{self.maptype}_{zoom}.jpg")
+
+        if mipmap < 4:           
+            if req_header:   # header only
+                hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
+                if hdr_im:
+                    print(f"opened {hdr_jpg_path}")
+                    if gzo_effective > 0:
+                        hdr_im = hdr_im.enlarge_2(gzo_effective)
+                    return hdr_im
+            else:
                 new_im = AoImage.open(mm_jpg_path, log_error = False)
-
-            elif endrow == 0:
-                mm_jpg_path = os.path.join(self.cache_dir, f"h_{self.col}_{self.row}_{self.maptype}_{self.zoom}.jpg")
-                mm_jpg_height = 256
-                r0_im = AoImage.open(mm_jpg_path, log_error = False)
-                if r0_im:
-                    new_im = AoImage.new('RGBA', (256*width,256*height), (0, 0, 0))
-                    new_im.paste(r0_im, (0, 0))
-
-        if new_im:
-            print(f"opened {mm_jpg_path}")
-            if gzo_effective > 0:
-                new_im = new_im.enlarge_2(gzo_effective)
-            return new_im
+                if new_im:      # whole image found?
+                    print(f"opened {mm_jpg_path}")
+                    if gzo_effective > 0:
+                        new_im = new_im.enlarge_2(gzo_effective)
+                    return new_im
+                elif startrow == 0: # else try r0 for later
+                    hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
 
         startchunk = 0
         endchunk = None
@@ -742,11 +749,11 @@ class Tile(object):
         if startrow:
             startrow >>= gzo_effective
             startchunk = startrow * chunks_per_row
+            if hdr_im:
+                startchunk += chunks_per_row
         if endrow is not None:
             endrow >>= gzo_effective
             endchunk = (endrow * chunks_per_row) + chunks_per_row
-
-        #print(f"3: zoom: {self.zoom}, Mipmap: {mipmap}, Requested zoom: {zoom} startrow: {startrow} endrow: {endrow}")
 
         self._create_chunks(zoom)
         chunks = self.chunks[zoom][startchunk:endchunk]
@@ -809,6 +816,11 @@ class Tile(object):
                 bg_color = (85,74,41)      # dark shade of a soil like color
             new_im = AoImage.new('RGBA', (256*width,256*height), bg_color) 
 
+        if hdr_im:
+            print(f"using r0 image {hdr_jpg_path}")
+            new_im.paste(hdr_im, (0, 0))
+
+
         #log.info(f"NUM CHUNKS: {len(chunks)}")
         for chunk in chunks:
             chunk.ready.wait()
@@ -827,12 +839,26 @@ class Tile(object):
                 )
             )
 
-        if mm_jpg_path:
-            h = new_im._height
-            new_im._height = mm_jpg_height
-            new_im.write_jpg(mm_jpg_path, 50)
-            new_im._height = h
-            print(f"saved {mm_jpg_path}")
+        if mipmap < 4 and not self.has_timeouts:
+            delete_chunks = False
+            if req_full_img:
+                new_im.write_jpg(mm_jpg_path, 50)
+                delete_chunks = True
+                print(f"saved {mm_jpg_path}")
+            elif req_header:
+                h = new_im._height
+                new_im._height = 256
+                new_im.write_jpg(hdr_jpg_path, 50)
+                new_im._height = h
+                delete_chunks = True
+                print(f"saved {hdr_jpg_path}")
+            if delete_chunks:
+                for chunk in chunks:
+                    try:
+                        os.remove(chunk.cache_path)
+                        print(f"deleted {chunk.cache_path}")
+                    except FileNotFoundError:
+                        print(f"can't delete {chunk.cache_path}!")
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if gzo_effective > 0:
