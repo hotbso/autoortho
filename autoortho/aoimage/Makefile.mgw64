@@ -9,7 +9,7 @@ OBJECTS=aoimage.o
 CC=x86_64-w64-mingw32-gcc
 LD=x86_64-w64-mingw32-gcc
 
-CFLAGS+=-g -O2 -s -Wall -fdiagnostics-color -Wno-format-overflow  \
+CFLAGS+=-g -O3 -s -Wall -fdiagnostics-color -Wno-format-overflow  \
 	-DWIN32 \
 	-I$(JPGT)/include $(DEFINES)
 

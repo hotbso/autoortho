@@ -8,10 +8,16 @@
 #include <unistd.h>
 #include <turbojpeg.h>
 
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
 #include "aoimage.h"
 
 #define TRUE 1
 #define FALSE 0
+
+typedef uint32_t pixel_t;
 
 AOIAPI void aoimage_delete(aoimage_t *img) {
     if (img->ptr)
@@ -74,6 +80,7 @@ AOIAPI void aoimage_dump(const char *title, const aoimage_t *img) {
 
 // no longer really needed as jpeg-turbo already returns RGBA
 AOIAPI int32_t aoimage_2_rgba(const aoimage_t *s_img, aoimage_t *d_img) {
+
     // already 4 channels means copy
     if (4 == s_img->channels) {
         memcpy(d_img, s_img, sizeof(aoimage_t));
@@ -108,97 +115,110 @@ AOIAPI int32_t aoimage_2_rgba(const aoimage_t *s_img, aoimage_t *d_img) {
         *dptr++ = 0xff;
     }
 
-   d_img->ptr = dest;
-   d_img->width = s_img->width;
-   d_img->height = s_img->height;
-   d_img->stride = 4 * d_img->width;
-   d_img->channels = 4;
-   return TRUE;
+    d_img->ptr = dest;
+    d_img->width = s_img->width;
+    d_img->height = s_img->height;
+    d_img->stride = 4 * d_img->width;
+    d_img->channels = 4;
+    d_img->errmsg[0] = '\0';
+    return TRUE;
 }
 
 AOIAPI int32_t aoimage_read_jpg(const char *filename, aoimage_t *img) {
-	long in_jpg_size;
-	unsigned char *in_jpg_buff;
+    memset(img, 0, sizeof(aoimage_t));
 
-    int fd = open(filename, O_RDONLY|O_BINARY);
+	long in_jpg_size;
+	unsigned char *in_jpg_buff = NULL;
+    int fd = -1;
+    int result = FALSE;
+
+    fd = open(filename, O_RDONLY|O_BINARY);
     if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-		return FALSE;
+        goto out;
 	}
 
-    if (lseek(fd, 0, SEEK_END) < 0 || ((in_jpg_size = tell(fd)) < 0) ||
-            lseek(fd, 0, SEEK_SET) < 0) {
+    if ((in_jpg_size = lseek(fd, 0, SEEK_END)) < 0 || lseek(fd, 0, SEEK_SET) < 0) {
         strcpy(img->errmsg, "error determining input file size");
-        return FALSE;
+        goto out;
     }
 
     if (in_jpg_size == 0) {
         strcpy(img->errmsg, "inputfile has no data");
-        return FALSE;
+        goto out;
     }
 
     //fprintf(stderr, "File size %ld\n", in_jpg_size);
 	in_jpg_buff = malloc(in_jpg_size);
     if (in_jpg_buff == NULL) {
 		sprintf(img->errmsg, "can't malloc %ld bytes", in_jpg_size);
-		return FALSE;
+        goto out;
 	}
 
     int rc = read(fd, in_jpg_buff, in_jpg_size);
     if (rc < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-        return FALSE;
+        goto out;
     }
 
     if (rc != in_jpg_size) {
 		sprintf(img->errmsg, "short read %d (%ld)", rc, in_jpg_size);
-		return FALSE;
+        goto out;
 	}
 
     //fprintf(stderr, "Input: Read %d/%lu bytes\n", rc, in_jpg_size);
-    close(fd);
-    int res = aoimage_from_memory(img, in_jpg_buff, in_jpg_size);
-    free(in_jpg_buff);
-    return res;
+    result = aoimage_from_memory(img, in_jpg_buff, in_jpg_size);
+
+out:
+    if (fd >= 0) close(fd);
+    if (in_jpg_buff) free(in_jpg_buff);
+
+    return result;
 }
 
 AOIAPI int32_t aoimage_write_jpg(const char *filename, aoimage_t *img, int32_t quality) {
     tjhandle tjh = NULL;
     unsigned char *out_jpg_buf = NULL;
     unsigned long out_jpg_size = 0;
-    FILE *fd = NULL;
+    int fd = -1;
 
     int result = FALSE;
+    img->errmsg[0] = '\0';
 
     tjh = tjInitCompress();
     if (NULL == tjh) {
         strcpy(img->errmsg, "Can't allocate tjInitCompress");
-        goto err;
+        goto out;
     }
 
     int rc = tjCompress2(tjh, img->ptr, img->width, 0, img->height, TJPF_RGBA,
                          &out_jpg_buf, &out_jpg_size, TJSAMP_444, quality, 0);
     if (rc) {
         strncpy(img->errmsg, tjGetErrorStr2(tjh), sizeof(img->errmsg) - 1);
-        goto err;
+        goto out;
     }
 
-    //fprintf(stderr, "jpg_size: %ld\n", out_jpg_size);
-    fd = fopen(filename, "wb");
-    if (fd == NULL) {
+    fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY|O_BINARY, 0664);
+    if (fd < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-		goto err;
+		goto out;
 	}
 
-    if (fwrite(out_jpg_buf, 1, out_jpg_size, fd) < 0) {
+    rc = write(fd, out_jpg_buf, out_jpg_size);
+    if (rc < 0) {
         strncpy(img->errmsg, strerror(errno), sizeof(img->errmsg)-1);
-        goto err;
+        goto out;
     }
+
+    if (rc != out_jpg_size) {
+		sprintf(img->errmsg, "short write %d (%ld)", rc, out_jpg_size);
+        goto out;
+	}
 
     result = TRUE;
 
-   err:
-    if (fd) fclose(fd);
+   out:
+    if (fd >= 0) close(fd);
     if (tjh) tjDestroy(tjh);
     if (out_jpg_buf) tjFree(out_jpg_buf);
     return result;
@@ -251,9 +271,60 @@ AOIAPI int32_t aoimage_reduce_2(const aoimage_t *s_img, aoimage_t *d_img) {
     d_img->height = s_img->height / 2;
     d_img->stride = 4 * d_img->width;
     d_img->channels = 4;
+    d_img->errmsg[0] = '\0';
 
     assert(dptr == dest + dlen);
     assert(dlen == d_img->width * d_img->height * 4);
+    return TRUE;
+}
+
+AOIAPI int32_t aoimage_enlarge_2(const aoimage_t *s_img, aoimage_t *d_img, uint32_t steps, uint32_t s_height_only) {
+    assert(NULL != s_img->ptr);
+    assert(s_height_only <= s_img->height);
+
+    if (0 == s_height_only)
+        s_height_only = s_img->height;
+
+    //aoimage_dump("aoimage_reduce_2 s_img", s_img);
+    int factor = 1 << steps;
+    int slen = s_img->width * s_img->height * 4;
+    int dlen = slen * factor * factor;
+    uint8_t *dest = malloc(dlen);
+    if (NULL == dest) {
+		sprintf(d_img->errmsg, "can't malloc %d bytes", dlen);
+        d_img->ptr = NULL;
+        return FALSE;
+    }
+
+    const pixel_t *sptr = (pixel_t *)s_img->ptr;      // source row start
+    pixel_t *dptr = (pixel_t *)dest;
+    int d_row_length = s_img->width * factor;   // in pixels
+
+    for (int sr = 0; sr < s_height_only; sr++) {
+        pixel_t *drptr = dptr;                  // start of destination row
+
+        // copy expand to destination row
+        for (int sc = 0; sc < s_img->width; sc++) {
+            //fprintf(stderr, "row %d col %d %lld\n", sr, sc, dptr - (pixel_t *)dest); fflush(stderr);
+            pixel_t pixel = *sptr++;
+            for (int i = 0; i < factor; i++)
+                *dptr++ = pixel;
+        }
+
+        // dup row factor -1 times
+        for (int i = 0; i < factor - 1; i++) {
+            memcpy(dptr, drptr, d_row_length * sizeof(pixel_t));
+            dptr += d_row_length;
+        }
+        assert((uint8_t *)dptr <= dest + dlen);
+    }
+
+    d_img->ptr = dest;
+    d_img->width = s_img->width * factor;
+    d_img->height = s_img->height * factor;
+    d_img->stride = 4 * d_img->width;
+    d_img->channels = 4;
+    d_img->errmsg[0] = '\0';
     return TRUE;
 }
 
