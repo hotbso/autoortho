@@ -912,13 +912,6 @@ class Tile(object):
         STATS['mm_counts'] = mm_stats.counts
         STATS['mm_averages'] = mm_stats.averages
 
-        if mipmap == 0:
-            log.debug("GET_MIPMAP: Will close all chunks.")
-            for z,chunks in self.chunks.items():
-                for chunk in chunks:
-                    chunk.close()
-            self.chunks = {}
-
         log.debug("Results:")
         log.debug(self.dds.mipmap_list)
         return True
