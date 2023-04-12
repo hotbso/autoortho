@@ -58,11 +58,11 @@ partial_stats = StatTracker()
 
 def _gtile_to_quadkey(til_x, til_y, zoomlevel):
     """
-    Translates Google coding of tiles to Bing Quadkey coding. 
+    Translates Google coding of tiles to Bing Quadkey coding.
     """
     quadkey=""
     temp_x=til_x
-    temp_y=til_y    
+    temp_y=til_y
     for step in range(1,zoomlevel+1):
         size=2**(zoomlevel-step)
         a=temp_x//size
@@ -82,12 +82,12 @@ def locked(fn):
     return wrapped
 
 class Getter(object):
-    queue = None 
+    queue = None
     workers = None
     WORKING = False
 
     def __init__(self, num_workers):
-        
+
         self.count = 0
         self.queue = PriorityQueue()
         self.workers = []
@@ -179,7 +179,7 @@ class Chunk(object):
     width = 256
     height = 256
     cache_dir = 'cache'
-    
+
     attempt = 0
 
     starttime = 0
@@ -233,7 +233,7 @@ class Chunk(object):
             h.write(data)
 
     def get(self, idx=0):
-        #log.debug(f"Getting {self}") 
+        #log.debug(f"Getting {self}")
 
         if self.get_cache():
             self.ready.set()
@@ -246,7 +246,7 @@ class Chunk(object):
             log.info(f"deadline not met for {self}")
             self.ready.set()    # results in a black hole
             return True
-            
+
         if not self.starttime:
             self.startime = time.time()
 
@@ -271,7 +271,7 @@ class Chunk(object):
         header = {
                 "user-agent": "curl/7.68.0"
         }
-        
+
         #time.sleep((self.attempt/10))
         self.attempt += 1
 
@@ -324,9 +324,10 @@ class Tile(object):
     priority = -1
     #tile_condition = None
     _lock = None
-    ready = None 
+    ready = None
 
     chunks = None
+    hdr_im = None       # header image
     cache_file = None
     dds = None
 
@@ -355,7 +356,6 @@ class Tile(object):
         self.bytes_read = 0
         self.lowest_offset = 99999999
 
-
         #self.tile_condition = threading.Condition()
         if min_zoom:
             self.min_zoom = int(min_zoom)
@@ -364,13 +364,13 @@ class Tile(object):
             self.cache_dir = cache_dir
         else:
             self.cache_dir = CFG.paths.cache_dir
-        
+
         # Hack override maptype
         #self.maptype = "BI"
 
         #self._find_cached_tiles()
         self.ready.clear()
-        
+
         #self._find_cache_file()
 
         if not priority:
@@ -429,8 +429,8 @@ class Tile(object):
             max_diff = min((self.zoom - int(quick_zoom)), self.max_mipmap)
             # Minimum zoom level allowed
             min_zoom = max((self.zoom - max_diff), self.min_zoom)
-            
-            # Effective zoom level we will use 
+
+            # Effective zoom level we will use
             quick_zoom = max(int(quick_zoom), min_zoom)
 
             # Effective difference in steps we will use
@@ -465,7 +465,7 @@ class Tile(object):
                 log.error("Failed to get chunk.")
 
         return True
-   
+
 
     def write_cache_tile(self, quick_zoom=0):
 
@@ -511,7 +511,7 @@ class Tile(object):
 
     def __get(self, quick_zoom=0, background=False):
         # Deprecated method
-        
+
         self.ready.clear()
         zoom = int(quick_zoom) if quick_zoom else self.zoom
 
@@ -526,7 +526,7 @@ class Tile(object):
         tile_time = end_time - start_time
         log.info(f"Retrieved tile cachefile: {self.cache_file} in {tile_time} seconds.")
         #tile_fetch_times.setdefault(zoom, collections.deque(maxlen=10)).append(tile_time)
-        #tile_averages[zoom] = sum(tile_fetch_times.get(zoom))/len(tile_fetch_times.get(zoom))      
+        #tile_averages[zoom] = sum(tile_fetch_times.get(zoom))/len(tile_fetch_times.get(zoom))
         #log.info(f"Fetch times: {tile_averages}")
 
         self._find_cache_file()
@@ -557,7 +557,7 @@ class Tile(object):
         if length >= mm.length:
             self.get_mipmap(mipmap)
             return True
-        
+
         log.debug(f"Retrieving {length} bytes from mipmap {mipmap} offset {offset}")
 
         if CFG.pydds.format == "BC1":
@@ -570,20 +570,20 @@ class Tile(object):
         # how deep are we in a mipmap
         mm_offset = max(0, offset - self.dds.mipmap_list[mipmap].startpos)
         log.debug(f"MM_offset: {mm_offset}  Offset {offset}.  Startpos {self.dds.mipmap_list[mipmap]}")
-    
+
         if CFG.pydds.format == "BC1":
             # Calculate which row 'offset' is in
             startrow = mm_offset >> (19 - mipmap)
             # Calculate which row 'offset+length' is in
             endrow = (mm_offset + length) >> (19 - mipmap)
-        else:  
+        else:
             # Calculate which row 'offset' is in
             startrow = mm_offset >> (20 - mipmap)
             # Calculate which row 'offset+length' is in
             endrow = (mm_offset + length) >> (20 - mipmap)
 
         log.debug(f"Startrow: {startrow} Endrow: {endrow}")
-        
+
         new_im = self.get_img(mipmap, startrow, endrow)
         if not new_im:
             log.debug("No updates, so no image generated")
@@ -591,7 +591,7 @@ class Tile(object):
 
         self.ready.clear()
         #log.info(new_im.size)
-        
+
         start_time = time.time()
 
         # Only attempt partial compression from mipmap start
@@ -657,13 +657,13 @@ class Tile(object):
             log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
-            
+
             # Get bytes prior to this mipmap
             self.get_bytes(offset, length)
 
             # Get the entire next mipmap
             self.get_mipmap(mm_idx + 1)
-        
+
         self.bytes_read += length
 
         self.last_read_pos = offset + length
@@ -682,7 +682,7 @@ class Tile(object):
 
     def get_header(self):
         outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
-        
+
         self.ready.clear()
         self.dds.write(outfile)
         self.ready.set()
@@ -707,7 +707,7 @@ class Tile(object):
         col, row, width, height, zoom, mipmap = self._get_quick_zoom(zoom)
         log.debug(f"Will use:  Zoom: {zoom},  Mipmap: {mipmap}")
 
-    
+
         log.debug(f"GET_IMG: MM List before { {x.idx:x.retrieved for x in self.dds.mipmap_list} }")
         if self.dds.mipmap_list[req_mipmap].retrieved:
             log.debug(f"GET_IMG: We already have mipmap {req_mipmap} for {self}")
@@ -717,28 +717,34 @@ class Tile(object):
         req_full_img = startrow == 0 and endrow is None                 # full image requested
 
         new_im = None
-        hdr_im = None
 
         mm_jpg_path = os.path.join(self.cache_dir, f"mm_{self.col}_{self.row}_{self.maptype}_{zoom}_{mipmap}.jpg")
         hdr_jpg_path = os.path.join(self.cache_dir, f"hdr_{self.col}_{self.row}_{self.maptype}_{zoom}.jpg")
 
-        if mipmap < 4:           
-            if req_header:   # header only
-                hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
-                if hdr_im:
+        if req_header:   # header only
+            if self.hdr_im is None:
+                self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
+                if self.hdr_im:
+                    STATS['jpg_hdr_hit'] = STATS.get('jpg_hdr_hit', 0) + 1
                     #print(f"opened {hdr_jpg_path}")
-                    if gzo_effective > 0:
-                        hdr_im = hdr_im.enlarge_2(gzo_effective)
-                    return hdr_im
-            else:
-                new_im = AoImage.open(mm_jpg_path, log_error = False)
-                if new_im:      # whole image found?
-                    #print(f"opened {mm_jpg_path}")
-                    if gzo_effective > 0:
-                        new_im = new_im.enlarge_2(gzo_effective)
-                    return new_im
-                elif startrow == 0: # else try r0 for later
-                    hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
+
+            if self.hdr_im:
+                if gzo_effective > 0:
+                    return self.hdr_im.enlarge_2(gzo_effective)
+                return self.hdr_im
+
+        if mipmap < 4:
+            new_im = AoImage.open(mm_jpg_path, log_error = False)
+            if new_im:      # whole image found?
+                STATS['jpg_mm_hit'] = STATS.get('jpg_mm_hit', 0) + 1
+                #print(f"opened {mm_jpg_path}")
+                if gzo_effective > 0:
+                    new_im = new_im.enlarge_2(gzo_effective)
+                return new_im
+            elif startrow == 0 and self.hdr_im is None: # else try r0 for later
+                self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
+                if self.hdr_im:
+                    STATS['jpg_hdr_hit'] = STATS.get('jpg_hdr_hit', 0) + 1
 
         startchunk = 0
         endchunk = None
@@ -747,7 +753,7 @@ class Tile(object):
         if startrow:
             startrow >>= gzo_effective
             startchunk = startrow * chunks_per_row
-            if hdr_im:
+            if self.hdr_im:
                 startchunk += chunks_per_row
         if endrow is not None:
             endrow >>= gzo_effective
@@ -784,13 +790,13 @@ class Tile(object):
                 bg_zoom = zoom - steps
 
                 #print(f"tile_zoom {self.zoom}, mipmap {mipmap}, width: {bg_width}, crz: {bg_col} {bg_row} {bg_zoom}")
-                
+
                 assert bg_width == 1
                 # submit in front of the other chunks
                 bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, -1, cache_dir=self.cache_dir)
                 bg_chunk.deadline = self.deadline - 0.5
                 chunk_getter.submit(bg_chunk)
-            
+
             for chunk in chunks:
                 if chunk.img is None:
                     #log.info(f"SUBMIT: {chunk}")
@@ -812,11 +818,11 @@ class Tile(object):
                 bg_color = (0, 0, 0)       # black is much cheaper
             else:
                 bg_color = (85,74,41)      # dark shade of a soil like color
-            new_im = AoImage.new('RGBA', (256*width,256*height), bg_color) 
+            new_im = AoImage.new('RGBA', (256*width,256*height), bg_color)
 
-        if hdr_im:
-            print(f"using r0 image {hdr_jpg_path}")
-            new_im.paste(hdr_im, (0, 0))
+        if req_mipmap == 0 and self.hdr_im:
+            #print(f"using r0 image {hdr_jpg_path}")
+            new_im.paste(self.hdr_im, (0, 0))
 
 
         #log.info(f"NUM CHUNKS: {len(chunks)}")
@@ -872,7 +878,7 @@ class Tile(object):
     def get_mipmap(self, mipmap=0):
         #
         # Protect this method to avoid simultaneous threads attempting mm builds at the same time.
-        # Otherwise we risk contention such as waiting get_img call attempting to build an image as 
+        # Otherwise we risk contention such as waiting get_img call attempting to build an image as
         # another thread closes chunks.
         #
 
@@ -891,9 +897,9 @@ class Tile(object):
         self.ready.clear()
         start_time = time.time()
         try:
-            #self.dds.gen_mipmaps(new_im, mipmap) 
+            #self.dds.gen_mipmaps(new_im, mipmap)
             if mipmap == 0:
-                self.dds.gen_mipmaps(new_im, mipmap, 1) 
+                self.dds.gen_mipmaps(new_im, mipmap, 1)
             else:
                 self.dds.gen_mipmaps(new_im, mipmap)
         except:
@@ -946,7 +952,7 @@ class Tile(object):
             for chunk in chunks:
                 chunk.close()
         self.chunks = {}
-        
+
 
 
 class CacheFile(object):
@@ -965,7 +971,7 @@ class Map(object):
         self.cache_dir = cache_dir
 
     def get_tiles(self, col, row, maptype, zoom, quick_zoom=0, background=False):
-        t = Tile(col, row, maptype, zoom, cache_dir=self.cache_dir) 
+        t = Tile(col, row, maptype, zoom, cache_dir=self.cache_dir)
 
         if background:
             tile_getter.submit(t, quick_zoom)
@@ -987,7 +993,7 @@ class TileCacher(object):
     cache_tile_lim = 100
 
     open_count = {}
-    
+
     def __init__(self, cache_dir='.cache'):
         if MEMTRACE:
             tracemalloc.start()
@@ -999,7 +1005,7 @@ class TileCacher(object):
             log.info(f"Maptype override not set, will use default.")
         log.info(f"Will use Compressor: {CFG.pydds.compressor}")
         self.tc_lock = threading.RLock()
-        
+
         self.cache_dir = CFG.paths.cache_dir
         log.info(f"Cache dir: {self.cache_dir}")
         self.min_zoom = CFG.autoortho.min_zoom
@@ -1027,7 +1033,7 @@ class TileCacher(object):
             log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
             log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
             time.sleep(15)
-            
+
             if not self.enable_cache:
                 continue
 
@@ -1053,7 +1059,7 @@ class TileCacher(object):
 
 
     def _get_tile(self, row, col, map_type, zoom):
-        
+
         idx = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
             tile = self.tiles.get(idx)
@@ -1071,7 +1077,7 @@ class TileCacher(object):
             tile = self.tiles.get(idx)
             if not tile:
                 self.misses += 1
-                tile = Tile(col, row, map_type, zoom, 
+                tile = Tile(col, row, map_type, zoom,
                     cache_dir = self.cache_dir,
                     min_zoom = self.min_zoom)
                 self.tiles[idx] = tile
@@ -1085,7 +1091,7 @@ class TileCacher(object):
             tile.refs += 1
         return tile
 
-    
+
     def _close_tile(self, row, col, map_type, zoom):
         tile_id = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
