@@ -4,23 +4,16 @@ import os
 import sys
 import time
 import math
-import tempfile
 import platform
 import threading
 
-import subprocess
-import collections
-
-from io import BytesIO
 from urllib.request import urlopen, Request
 from queue import Queue, PriorityQueue, Empty
 from functools import wraps, lru_cache
 
 import pydds
 
-
 import psutil
-from PIL import Image
 from aoimage import AoImage
 
 from aoconfig import CFG
@@ -33,28 +26,13 @@ log = logging.getLogger(__name__)
 
 #from memory_profiler import profile
 
-def do_url(url, headers={}):
-    req = Request(url, headers=headers)
-    resp = urlopen(req, timeout=5)
-    if resp.status != 200:
-        raise Exception
-    return resp.read()
-
 MAPID = "s2cloudless-2020_3857"
 MATRIXSET = "g"
-
-##
-
-import socket
-import struct
-
-##
 
 # Track average fetch times
 tile_stats = StatTracker(20, 12)
 mm_stats = StatTracker(0, 5)
 partial_stats = StatTracker()
-
 
 def _gtile_to_quadkey(til_x, til_y, zoomlevel):
     """
@@ -72,6 +50,7 @@ def _gtile_to_quadkey(til_x, til_y, zoomlevel):
         quadkey=quadkey+str(a+2*b)
     return quadkey
 
+
 def locked(fn):
     @wraps(fn)
     def wrapped(self, *args, **kwargs):
@@ -80,6 +59,7 @@ def locked(fn):
             result = fn(self, *args, **kwargs)
         return result
     return wrapped
+
 
 class Getter(object):
     queue = None
@@ -159,15 +139,7 @@ class ChunkGetter(Getter):
 
 chunk_getter = ChunkGetter(32)
 
-#class TileGetter(Getter):
-#    def get(self, obj, *args, **kwargs):
-#        log.debug(f"{obj}, {args}, {kwargs}")
-#        return obj.get(*args)
-#
-#tile_getter = TileGetter(8)
-
 log.info(f"chunk_getter: {chunk_getter}")
-#log.info(f"tile_getter: {tile_getter}")
 
 
 class Chunk(object):
@@ -388,13 +360,11 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
 
-
     def __lt__(self, other):
         return self.priority < other.priority
 
     def __repr__(self):
         return f"Tile({self.col}, {self.row}, {self.maptype}, {self.zoom}, {self.min_zoom}, {self.cache_dir})"
-
 
     @locked
     def _create_chunks(self, quick_zoom=0):
@@ -408,20 +378,6 @@ class Tile(object):
                     #chunk = Chunk(c, r, self.maptype, zoom, priority=self.priority)
                     chunk = Chunk(c, r, self.maptype, zoom, cache_dir=self.cache_dir)
                     self.chunks[zoom].append(chunk)
-
-    def _find_cache_file(self):
-        #with self.tile_condition:
-        with self.tile_lock:
-            for z in range(self.zoom, (self.min_zoom-1), -1):
-                cache_file = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{z}.dds")
-                if os.path.exists(cache_file):
-                    log.info(f"Found cache for {cache_file}...")
-                    self.cache_file = (z, cache_file)
-                    self.ready.set()
-                    return
-
-        #log.info(f"No cache found for {self}!")
-
 
     def _get_quick_zoom(self, quick_zoom=0):
         if quick_zoom:
@@ -450,88 +406,6 @@ class Tile(object):
             zoom_diff = 0
 
         return (col, row, width, height, zoom, zoom_diff)
-
-
-    def fetch(self, quick_zoom=0, background=False):
-        self._create_chunks(quick_zoom)
-        col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
-
-        for chunk in self.chunks[zoom]:
-            chunk_getter.submit(chunk)
-
-        for chunk in self.chunks[zoom]:
-            ret = chunk.ready.wait()
-            if not ret:
-                log.error("Failed to get chunk.")
-
-        return True
-
-
-    def write_cache_tile(self, quick_zoom=0):
-
-        col, row, width, height, zoom, zoom_diff = self._get_quick_zoom(quick_zoom)
-
-        outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{zoom}.dds")
-
-        new_im = Image.new('RGBA', (256*width,256*height), (250,250,250))
-        try:
-            for chunk in self.chunks[zoom]:
-                ret = chunk.ready.wait()
-                if not ret:
-                    log.error("Failed to get chunk")
-
-                start_x = int((chunk.width) * (chunk.col - col))
-                start_y = int((chunk.height) * (chunk.row - row))
-                #end_x = int(start_x + chunk.width)
-                #end_y = int(start_y + chunk.height)
-
-                new_im.paste(
-                    Image.open(BytesIO(chunk.data)).convert("RGBA"),
-                    (
-                        start_x,
-                        start_y
-                    )
-                )
-
-            self.ready.clear()
-            #pydds.to_dds(new_im, outfile)
-            self.dds.gen_mipmaps(new_im)
-            self.dds.write(outfile)
-        except:
-            #log.error(f"Error detected for {self} {outfile}, remove possibly corrupted files.")
-            #os.remove(outfile)
-            raise
-        finally:
-            log.debug("Done")
-            new_im.close()
-
-        log.info(f"Done writing {outfile}")
-        self.ready.set()
-
-
-    def __get(self, quick_zoom=0, background=False):
-        # Deprecated method
-
-        self.ready.clear()
-        zoom = int(quick_zoom) if quick_zoom else self.zoom
-
-        #if self.cache_file[0] < zoom:
-        log.info(f"Will get tile")
-        start_time = time.time()
-        #with self.tile_condition:
-        with self._lock:
-            self.fetch(quick_zoom, background)
-            self.write_cache_tile(quick_zoom)
-        end_time = time.time()
-        tile_time = end_time - start_time
-        log.info(f"Retrieved tile cachefile: {self.cache_file} in {tile_time} seconds.")
-        #tile_fetch_times.setdefault(zoom, collections.deque(maxlen=10)).append(tile_time)
-        #tile_averages[zoom] = sum(tile_fetch_times.get(zoom))/len(tile_fetch_times.get(zoom))
-        #log.info(f"Fetch times: {tile_averages}")
-
-        self._find_cache_file()
-        return self.cache_file[1]
-
 
     def find_mipmap_pos(self, offset):
         for m in self.dds.mipmap_list:
@@ -670,23 +544,6 @@ class Tile(object):
         # Seek and return data
         self.dds.seek(offset)
         return self.dds.read(length)
-
-
-
-    def write(self):
-        outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
-        self.ready.clear()
-        self.dds.write(outfile)
-        self.ready.set()
-        return outfile
-
-    def get_header(self):
-        outfile = os.path.join(self.cache_dir, f"{self.row}_{self.col}_{self.maptype}_{self.zoom}_{self.zoom}.dds")
-
-        self.ready.clear()
-        self.dds.write(outfile)
-        self.ready.set()
-        return outfile
 
     @locked
     def get_img(self, mipmap, startrow=0, endrow=None):
@@ -872,8 +729,6 @@ class Tile(object):
 
         return new_im
 
-
-    #@profile
     @locked
     def get_mipmap(self, mipmap=0):
         #
@@ -922,7 +777,6 @@ class Tile(object):
         log.debug(self.dds.mipmap_list)
         return True
 
-
     def should_close(self):
         if self.dds.mipmap_list[0].retrieved:
             if self.bytes_read < self.dds.mipmap_list[0].length:
@@ -933,7 +787,6 @@ class Tile(object):
                 return True
         else:
             return True
-
 
     def close(self):
         log.debug(f"Closing {self}")
@@ -952,34 +805,6 @@ class Tile(object):
             for chunk in chunks:
                 chunk.close()
         self.chunks = {}
-
-
-
-class CacheFile(object):
-    file_condition = threading.Condition()
-    path = None
-
-    # EMPTY, WRITING, READY
-    state = None
-
-
-class Map(object):
-
-    tiles = []
-
-    def __init__(self, cache_dir="./cache"):
-        self.cache_dir = cache_dir
-
-    def get_tiles(self, col, row, maptype, zoom, quick_zoom=0, background=False):
-        t = Tile(col, row, maptype, zoom, cache_dir=self.cache_dir)
-
-        if background:
-            tile_getter.submit(t, quick_zoom)
-            self.tiles.append(t)
-            ret = True
-        else:
-            ret = t.get(quick_zoom)
-        return ret
 
 
 class TileCacher(object):
@@ -1090,7 +915,6 @@ class TileCacher(object):
 
             tile.refs += 1
         return tile
-
 
     def _close_tile(self, row, col, map_type, zoom):
         tile_id = self._to_tile_id(row, col, map_type, zoom)
