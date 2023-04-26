@@ -598,7 +598,7 @@ class Tile(object):
                 if gzo_effective > 0:
                     new_im = new_im.enlarge_2(gzo_effective)
                 return new_im
-            elif startrow == 0 and self.hdr_im is None: # else try r0 for later
+            elif startrow == 0 and req_mipmap == 0 and self.hdr_im is None: # else try r0 for later
                 self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
                 if self.hdr_im:
                     STATS['jpg_hdr_hit'] = STATS.get('jpg_hdr_hit', 0) + 1
@@ -610,7 +610,7 @@ class Tile(object):
         if startrow:
             startrow >>= gzo_effective
             startchunk = startrow * chunks_per_row
-            if self.hdr_im:
+            if req_mipmap == 0 and self.hdr_im:
                 startchunk += chunks_per_row
         if endrow is not None:
             endrow >>= gzo_effective
@@ -678,7 +678,6 @@ class Tile(object):
             new_im = AoImage.new('RGBA', (256*width,256*height), bg_color)
 
         if req_mipmap == 0 and self.hdr_im:
-            #print(f"using r0 image {hdr_jpg_path}")
             new_im.paste(self.hdr_im, (0, 0))
 
 
@@ -884,11 +883,11 @@ class TileCacher(object):
 
 
     def _get_tile(self, row, col, map_type, zoom):
-
         idx = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
             tile = self.tiles.get(idx)
             if not tile:
+                log.error("Oh, _get_tile of unopened tile")
                 tile = self._open_tile(row, col, map_type, zoom)
         return tile
 
