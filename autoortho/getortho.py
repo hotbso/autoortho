@@ -509,6 +509,7 @@ class Tile(object):
             #print(f"new cycle: {self.last_read_pos} {offset}")
             self.deadline = time.time() + self.default_timeout
 
+        part1 = None
         if offset == 0:
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
@@ -532,8 +533,19 @@ class Tile(object):
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
 
-            # Get bytes prior to this mipmap
-            self.get_bytes(offset, length)
+            # If we seek here (i.e. we are not in a sequential read cycle) we conclude that
+            # this is just a collateral effect of input blocking and data does not matter.
+            # So we do not do a costly construction of the end row of this mm but return zeroes.
+            if mm_idx < 4 and offset != self.last_read_pos:
+                #print(f"Seek into middle of mm {mm_idx} {offset} {length}")
+                delta = mipmap.endpos - offset
+                part1 = b'\x00' * delta
+                offset += delta
+                length -= delta
+                assert length >= 0
+            else:
+                # Get bytes prior to this mipmap
+                self.get_bytes(offset, length)
 
             # Get the entire next mipmap
             self.get_mipmap(mm_idx + 1)
@@ -543,7 +555,10 @@ class Tile(object):
         self.last_read_pos = offset + length
         # Seek and return data
         self.dds.seek(offset)
-        return self.dds.read(length)
+        if part1 is None:
+            return self.dds.read(length)
+        else:
+            return part1 + self.dds.read(length)
 
     @locked
     def get_img(self, mipmap, startrow=0, endrow=None):
