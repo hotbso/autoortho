@@ -89,7 +89,7 @@ class AoImage(Structure):
         """
         h = self._height
         if height_only > 0:
-            self._height = height_only 
+            self._height = height_only
         if not _aoi.aoimage_write_jpg(filename.encode(), self, quality):
             log.error(f"AoImage.write_jpg error: {self._errmsg.decode()}")
         self._height = h
@@ -111,6 +111,14 @@ class AoImage(Structure):
     def paste(self, p_img, pos):
         _aoi.aoimage_paste(self, p_img, pos[0], pos[1])
         return None
+
+    def copy(self, height_only = 0):
+        new = AoImage()
+        if not _aoi.aoimage_copy(self, new, height_only):
+            log.error(f"AoImage.copy error: {self._errmsg.decode()}")
+            return None
+
+        return new
 
     @property
     def size(self):
@@ -165,6 +173,7 @@ _aoi.aoimage_delete.argtypes = (POINTER(AoImage),)
 _aoi.aoimage_create.argtypes = (POINTER(AoImage), c_uint32, c_uint32, c_uint32, c_uint32, c_uint32)
 _aoi.aoimage_tobytes.argtypes = (POINTER(AoImage), c_char_p)
 _aoi.aoimage_from_memory.argtypes = (POINTER(AoImage), c_char_p, c_uint32)
+_aoi.aoimage_copy.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32)
 _aoi.aoimage_paste.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32, c_uint32)
 
 def main():
@@ -193,6 +202,9 @@ def main():
     img = open("../testfiles/test_tile.jpg")
     log.info(f"AoImage.open {img}")
 
+    img_hdr = img.copy(256)
+    img_hdr.write_jpg("img_hdr.jpg")
+
     img2 = img.reduce_2()
     log.info(f"img2: {img2}")
 
@@ -203,7 +215,6 @@ def main():
 
     img4 = img.reduce_2(2)
     log.info(f"img4 {img4}")
-
 
     img.paste(img4, (0, 2048))
     img.write_jpg("test_tile_p2.jpg")

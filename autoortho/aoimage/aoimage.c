@@ -391,6 +391,32 @@ AOIAPI void aoimage_tobytes(aoimage_t *img, uint8_t *data) {
     memcpy(data, img->ptr, img->width * img->height * img->channels);
 }
 
+AOIAPI int32_t aoimage_copy(const aoimage_t *s_img, aoimage_t *d_img, uint32_t s_height_only) {
+    assert(NULL != s_img->ptr);
+    assert(s_height_only <= s_img->height);
+
+    if (0 == s_height_only)
+        s_height_only = s_img->height;
+
+    int dlen = s_img->width * s_height_only * s_img->channels;
+    uint8_t *dest = malloc(dlen);
+    if (NULL == dest) {
+		sprintf(d_img->errmsg, "can't malloc %d bytes", dlen);
+        d_img->ptr = NULL;
+        return FALSE;
+    }
+
+    memcpy(dest, s_img->ptr, dlen);
+    d_img->ptr = dest;
+    d_img->width = s_img->width;
+    d_img->height = s_height_only;
+    d_img->stride = 4 * d_img->width;
+    d_img->channels = 4;
+    d_img->errmsg[0] = '\0';
+    return TRUE;
+
+}
+
 AOIAPI int32_t aoimage_paste(aoimage_t *img, const aoimage_t *p_img, uint32_t x, uint32_t y) {
     assert(x + p_img->width <= img->width);
     assert(y + p_img->height <= img->height);
