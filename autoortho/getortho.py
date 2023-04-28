@@ -281,6 +281,27 @@ class Chunk(object):
     def close(self):
         self.img = None
 
+class BgWorkUnit:
+
+    def __init__(self, img, pathname, zoom, chunk_names):
+        self.img = img
+        self.pathname = pathname
+        self.zoom = zoom
+        self.chunk_names = chunk_names
+
+    def __repr__(self):
+        return f"BgWorkUnit {self.pathname}"
+
+    def execute(self):
+        #print(f"Saving {self.pathname}")
+        self.img.write_jpg(self.pathname, 50)
+        for cn in self.chunk_names:
+            try:
+                os.remove(cn)
+                #print(f"deleted {cn}")
+            except FileNotFoundError:
+                pass
+                print(f"can't delete {cn}!")
 
 class Tile(object):
     row = -1
@@ -308,8 +329,6 @@ class Tile(object):
     default_timeout = 5.0
     has_timeouts = False
     last_read_pos = -1      # position after last read
-    # just ensure that it's always defined with a reasonable value
-    deadline = time.time() + default_timeout
 
     # a global zoom out of everything
     global_zoom_out = 1
@@ -359,6 +378,11 @@ class Tile(object):
         self.dds = pydds.DDS(self.width*256, self.height*256, ispc=use_ispc,
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
+        self.bg_work = []
+
+        # just ensure that it's always defined with a reasonable value
+        self.deadline = time.time() + self.default_timeout
+
 
     def __lt__(self, other):
         return self.priority < other.priority
@@ -561,6 +585,15 @@ class Tile(object):
             return part1 + self.dds.read(length)
 
     @locked
+    def execute_bg_work(self):
+        for wu in self.bg_work:
+            print(f"Executing {wu}")
+            wu.execute()
+            self.chunks[wu.zoom] = []
+
+        self.bg_work = []
+
+    @locked
     def get_img(self, mipmap, startrow=0, endrow=None):
         #
         # Get an image for a particular mipmap
@@ -714,25 +747,19 @@ class Tile(object):
                 )
             )
 
-        if mipmap < 4 and not self.has_timeouts:
-            delete_chunks = False
+        if (req_full_img or req_header) and mipmap < 4 and not self.has_timeouts:
+            chunk_names = []
+            for chunk in chunks:
+                chunk_names.append(chunk.cache_path)
+                chunk.img = None
+
             if req_full_img:
-                new_im.write_jpg(mm_jpg_path, 50)
-                delete_chunks = True
-                #print(f"saved {mm_jpg_path}")
+                wu = BgWorkUnit(new_im, mm_jpg_path, zoom, chunk_names)
             elif req_header:
                 self.hdr_im = new_im.copy(256)
-                self.hdr_im.write_jpg(hdr_jpg_path, 50)
-                delete_chunks = True
-                #print(f"saved {hdr_jpg_path}")
-            if delete_chunks:
-                for chunk in chunks:
-                    try:
-                        os.remove(chunk.cache_path)
-                        #print(f"deleted {chunk.cache_path}")
-                    except FileNotFoundError:
-                        print(f"can't delete {chunk.cache_path}!")
-                self.chunks[zoom] = []
+                wu = BgWorkUnit(self.hdr_im, hdr_jpg_path, zoom, chunk_names)
+
+            self.bg_work.append(wu)
 
         log.debug(f"GET_IMG: DONE!  IMG created {new_im}")
         if gzo_effective > 0:
@@ -806,6 +833,9 @@ class Tile(object):
     def close(self):
         log.debug(f"Closing {self}")
 
+        #print(f"\n\nClosing {self} {len(self.bg_work)}")
+
+        self.execute_bg_work()
         if self.dds.mipmap_list[0].retrieved:
             if self.bytes_read < self.dds.mipmap_list[0].length:
                 log.warning(f"TILE: {self} retrieved mipmap 0, but only read {self.bytes_read}. Lowest offset: {self.lowest_offset}")
