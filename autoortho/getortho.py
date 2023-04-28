@@ -721,7 +721,8 @@ class Tile(object):
                 delete_chunks = True
                 #print(f"saved {mm_jpg_path}")
             elif req_header:
-                new_im.write_jpg(hdr_jpg_path, 50, 256)
+                self.hdr_im = new_im.copy(256)
+                self.hdr_im.write_jpg(hdr_jpg_path, 50)
                 delete_chunks = True
                 #print(f"saved {hdr_jpg_path}")
             if delete_chunks:
