@@ -6,6 +6,7 @@ import time
 import math
 import platform
 import threading
+import gc
 
 from urllib.request import urlopen, Request
 from queue import Queue, PriorityQueue, Empty
@@ -325,6 +326,7 @@ class Tile(object):
     dds = None
 
     refs = None
+    last_access = 0
 
     default_timeout = 5.0
     has_timeouts = False
@@ -857,8 +859,8 @@ class TileCacher(object):
 
     hits = 0
     misses = 0
+    access_ticker = 0
 
-    enable_cache = False
     cache_mem_lim = pow(2,30) * 2
     cache_tile_lim = 100
 
@@ -880,13 +882,8 @@ class TileCacher(object):
         log.info(f"Cache dir: {self.cache_dir}")
         self.min_zoom = CFG.autoortho.min_zoom
 
-        self.clean_t = threading.Thread(target=self.clean, daemon=True)
-        self.clean_t.start()
-
-        if platform.system() == 'Windows':
-            # Windows doesn't handle FS cache the same way so enable here.
-            self.enable_cache = True
-            pass
+        self.bg_processing_t = threading.Thread(target=self.bg_processing, daemon=True)
+        self.bg_processing_t.start()
 
     def _to_tile_id(self, row, col, map_type, zoom):
         if self.maptype_override:
@@ -894,28 +891,42 @@ class TileCacher(object):
         tile_id = f"{row}_{col}_{map_type}_{zoom}"
         return tile_id
 
-    def clean(self):
-        log.info(f"Started tile clean thread.  Mem limit {self.cache_mem_lim}")
+    def bg_processing(self):
+        log.info(f"Started tile bg_processing thread.  Mem limit {self.cache_mem_lim}")
+        process = psutil.Process(os.getpid())
+
         while True:
-            process = psutil.Process(os.getpid())
+            gc.collect(1)   # run garbage collector before judging bss
+            time.sleep(1)   # collect is asynchronous, or?
             cur_mem = process.memory_info().rss
             rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
             log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
             log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
             time.sleep(15)
 
-            if not self.enable_cache:
-                continue
-
             while len(self.tiles) >= self.cache_tile_lim and cur_mem > self.cache_mem_lim:
                 log.debug("Hit cache limit.  Remove oldest 20")
+
+                # tile.close() writes back jpegs so it can be lengthy and we don't do that under
+                # tc_lock. We extract them from the cache to a local queue.
+                close_q = []
                 with self.tc_lock:
-                    for i in list(self.tiles.keys())[:20]:
-                        t = self.tiles.get(i)
+                    by_age = sorted(self.tiles, key=lambda id: self.tiles.get(id).last_access)
+                    for i in by_age[:20]:
+                        t = self.tiles[i]
+                        #print(f"age: {t.last_access} {self.access_ticker}")
                         if t.refs <= 0:
-                            t = self.tiles.pop(i)
-                            t.close()
-                        t = None
+                            del(self.tiles[i])
+                            close_q.append(t)
+
+                for t in close_q:
+                    t.close()
+
+                # remove all extra references to tiles
+                del(by_age)
+                del(close_q)
+                del(t)
+
                 cur_mem = process.memory_info().rss
 
 
@@ -929,12 +940,15 @@ class TileCacher(object):
 
 
     def _get_tile(self, row, col, map_type, zoom):
+        self.access_ticker += 1
         idx = self._to_tile_id(row, col, map_type, zoom)
         with self.tc_lock:
             tile = self.tiles.get(idx)
             if not tile:
                 log.error("Oh, _get_tile of unopened tile")
                 tile = self._open_tile(row, col, map_type, zoom)
+
+        tile.last_access = self.access_ticker
         return tile
 
     def _open_tile(self, row, col, map_type, zoom):
@@ -971,22 +985,11 @@ class TileCacher(object):
 
             t.refs -= 1
 
-            if self.enable_cache:
-                if t.has_timeouts:
-                    # mark as not retrieved but keep other cached data
-                    for m in t.dds.mipmap_list:
-                        m.retrieved = False
+            if t.has_timeouts:
+                # mark as not retrieved but keep other cached data
+                for m in t.dds.mipmap_list:
+                    m.retrieved = False
 
-                log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
-                t.last_read_pos = -1 # so a revive from the cache starts a new cycle
-                return True
-
-            if t.refs <= 0:
-                log.debug(f"No more refs for {tile_id} closing...")
-                t = self.tiles.pop(tile_id)
-                t.close()
-                t = None
-            else:
-                log.debug(f"Still have {t.refs} refs for {tile_id}")
-
-        return True
+            log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
+            t.last_read_pos = -1 # so a revive from the cache starts a new cycle
+            return True
