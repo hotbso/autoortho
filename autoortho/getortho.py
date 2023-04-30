@@ -328,8 +328,8 @@ class Tile(object):
     refs = None
     last_access = 0
 
-    default_timeout = 5.0
-    has_timeouts = False
+    default_timeout = 3.0
+    has_voids = False
     last_read_pos = -1      # position after last read
 
     # a global zoom out of everything
@@ -735,7 +735,7 @@ class Tile(object):
         for chunk in chunks:
             chunk.ready.wait()
             if chunk.img is None:   # deadline not met
-                self.has_timeouts = True
+                self.has_voids = True
                 continue
 
             start_x = int((chunk.width) * (chunk.col - col))
@@ -749,7 +749,7 @@ class Tile(object):
                 )
             )
 
-        if (req_full_img or req_header) and mipmap < 4 and not self.has_timeouts:
+        if (req_full_img or req_header) and mipmap < 4 and not self.has_voids:
             chunk_names = []
             for chunk in chunks:
                 chunk_names.append(chunk.cache_path)
@@ -985,10 +985,11 @@ class TileCacher(object):
 
             t.refs -= 1
 
-            if t.has_timeouts:
+            if t.has_voids:
                 # mark as not retrieved but keep other cached data
                 for m in t.dds.mipmap_list:
                     m.retrieved = False
+                t.has_voids = False
 
             log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
             t.last_read_pos = -1 # so a revive from the cache starts a new cycle
