@@ -142,6 +142,37 @@ chunk_getter = ChunkGetter(32)
 
 log.info(f"chunk_getter: {chunk_getter}")
 
+class EventRate:
+    _nevent = 0
+    _nevent_prev = 0
+    rate = 0
+    qsize = 150
+    min_len = 10
+    max_len = 250
+
+    def __init__(self, name, tick_delta):
+        self.tick_delta = tick_delta
+        self.name = name
+        self.t = threading.Thread(target=self._ticker, daemon=True)
+        self.t.start()
+
+    def report_event(self):
+        self._nevent += 1
+
+    def _ticker(self):
+        while True:
+            self.rate = (self._nevent - self._nevent_prev) / self.tick_delta
+            self._nevent_prev = self._nevent
+            if self.rate > 0.0:
+                self.qsize -= 2 * self.rate * self.tick_delta
+            elif self.rate < 1.0:
+                self.qsize += 1
+
+            self.qsize = int(max(self.min_len, min(self.max_len, self.qsize)))
+            print(f"{self.name} rate: {self.rate:1.2f} {self.qsize}")
+            time.sleep(self.tick_delta)
+
+timeout_rate = EventRate("timeout", 3.0)
 
 class Chunk(object):
     col = -1
@@ -218,6 +249,7 @@ class Chunk(object):
         if remaining_time <= 0.3:
             log.info(f"deadline not met for {self}")
             self.ready.set()    # results in a black hole
+            timeout_rate.report_event()
             return True
 
         if not self.starttime:
@@ -264,6 +296,7 @@ class Chunk(object):
                 # FALLTHROUGH
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
+            timeout_rate.report_event()
             # FALLTHROUGH
         finally:
             if resp:
@@ -328,7 +361,7 @@ class Tile(object):
     refs = None
     last_access = 0
 
-    default_timeout = 3.0
+    default_timeout = 5.0
     has_voids = False
     last_read_pos = -1      # position after last read
 
@@ -688,7 +721,7 @@ class Tile(object):
 
         # only submit missing chunks to the workers
         if not have_all_chunks:
-            if mipmap <= 2:         # more than 16 chunks, its worth a bg image
+            if mipmap <= 3:         # more than 4 chunks, its worth a bg image
                 steps = 4 - mipmap  # steps to enlarge
                 bg_col = col >> steps
                 bg_row = row >> steps
@@ -704,13 +737,22 @@ class Tile(object):
                 bg_chunk.deadline = self.deadline - 0.5
                 chunk_getter.submit(bg_chunk)
 
+            # submitting more chunks than 'credits' will end in a timeout anyway
+            # so just skip them
+            ql = chunk_getter.queue.qsize()
+            credits = max(0, timeout_rate.qsize - ql)
             for chunk in chunks:
                 if chunk.img is None:
-                    #log.info(f"SUBMIT: {chunk}")
-                    chunk.ready.clear()
-                    chunk.priority = self.deadline
-                    chunk.deadline = self.deadline
-                    chunk_getter.submit(chunk)
+                    if credits > 0:
+                        #log.info(f"SUBMIT: {chunk}")
+                        chunk.ready.clear()
+                        chunk.priority = self.deadline
+                        chunk.deadline = self.deadline
+                        chunk_getter.submit(chunk)
+                    else:
+                        STATS['submit_skip'] = STATS.get('submit_skip', 0) + 1
+                        chunk.ready.set()
+                credits -= 1
 
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
 
