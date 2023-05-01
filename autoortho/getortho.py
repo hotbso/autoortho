@@ -953,13 +953,24 @@ class TileCacher(object):
             rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
             log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
             log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
-            time.sleep(15)
+
+            # sweep over tiles and run bg work
+
+            # as that writes back jpegs it can be lengthy and we don't do that under
+            # tc_lock. We extract them from the cache to a local queue.
+            bg_q = []
+            with self.tc_lock:
+                for t in self.tiles.values():
+                    if t.refs <= 0:
+                        bg_q.append(t)
+
+            for t in bg_q:
+                t.execute_bg_work()
+
+            del(bg_q)
 
             while len(self.tiles) >= self.cache_tile_lim and cur_mem > self.cache_mem_lim:
                 log.debug("Hit cache limit.  Remove oldest 20")
-
-                # tile.close() writes back jpegs so it can be lengthy and we don't do that under
-                # tc_lock. We extract them from the cache to a local queue.
                 close_q = []
                 with self.tc_lock:
                     by_age = sorted(self.tiles, key=lambda id: self.tiles.get(id).last_access)
@@ -973,7 +984,7 @@ class TileCacher(object):
                 for t in close_q:
                     t.close()
 
-                # remove all extra references to tiles
+                # remove all extra references to tiles so the are gc'ed
                 del(by_age)
                 del(close_q)
                 del(t)
@@ -989,6 +1000,7 @@ class TileCacher(object):
                 for stat in top_stats[:10]:
                         log.info(stat)
 
+            time.sleep(15)
 
     def _get_tile(self, row, col, map_type, zoom):
         self.access_ticker += 1
