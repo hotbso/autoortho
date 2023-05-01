@@ -363,6 +363,7 @@ class Tile(object):
 
     default_timeout = 5.0
     has_voids = False
+    first_open = True
     last_read_pos = -1      # position after last read
 
     # a global zoom out of everything
@@ -741,6 +742,14 @@ class Tile(object):
             # so just skip them
             ql = chunk_getter.queue.qsize()
             credits = max(0, timeout_rate.qsize - ql)
+
+            # a header read on first open is just a probe so we provide
+            # a background image only (=mm4 and that's needed anyway as next
+            # operation probes the length by reading 8-( )
+            if self.first_open and req_header:
+                credits = 0
+                STATS['fake_hdr'] = STATS.get('fake_hdr', 0) + 1
+
             for chunk in chunks:
                 if chunk.img is None:
                     if credits > 0:
@@ -1009,6 +1018,7 @@ class TileCacher(object):
                 self.tiles[idx] = tile
                 self.open_count[idx] = self.open_count.get(idx, 0) + 1
                 if self.open_count[idx] > 1:
+                    tile.first_open = False
                     log.debug(f"Tile: {idx} opened for the {self.open_count[idx]} time.")
             elif tile.refs <= 0:
                 # Only in this case would this cache have made a difference
@@ -1032,6 +1042,7 @@ class TileCacher(object):
                 for m in t.dds.mipmap_list:
                     m.retrieved = False
                 t.has_voids = False
+                t.first_open = False
 
             log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
             t.last_read_pos = -1 # so a revive from the cache starts a new cycle
