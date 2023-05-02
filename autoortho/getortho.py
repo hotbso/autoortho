@@ -18,7 +18,7 @@ import psutil
 from aoimage import AoImage
 
 from aoconfig import CFG
-from aostats import STATS, StatTracker
+from aostats import STATS, StatTracker, STATS_inc
 
 MEMTRACE = False
 
@@ -223,13 +223,12 @@ class Chunk(object):
         return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority},{self.deadline - time.time():0.1f})"
 
     def get_cache(self):
-        global STATS
         self.img = AoImage.open(self.cache_path, log_error = False)
         if self.img:
-            STATS['chunk_hit'] = STATS.get('chunk_hit', 0) + 1
+            STATS_inc('chunk_hit')
             return True
         else:
-            STATS['chunk_miss'] = STATS.get('chunk_miss', 0) + 1
+            STATS_inc('chunk_miss')
             return False
 
     def save_cache(self, data):
@@ -1035,6 +1034,8 @@ class TileCacher(object):
                 # Only in this case would this cache have made a difference
                 self.hits += 1
 
+            if tile.refs > 0:
+                STATS_inc('open_mult')
             tile.refs += 1
         return tile
 
@@ -1055,6 +1056,5 @@ class TileCacher(object):
                     m.retrieved = False
                     m.has_voids = False
 
-            log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
             t.last_read_pos = -1 # so a revive from the cache starts a new cycle
             return True

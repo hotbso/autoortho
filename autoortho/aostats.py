@@ -9,6 +9,9 @@ log = logging.getLogger(__name__)
 
 STATS={}
 
+def STATS_inc(name):
+    STATS[name] = STATS.get(name, 0) + 1
+
 class AOStats(object):
     def __init__(self):
         log.info("Creating stats object")
@@ -60,3 +63,4 @@ class StatTracker(object):
         self.counts[key] = self.counts.get(key, 0) + 1
         self.fetch_times.setdefault(key, collections.deque(maxlen=self.maxlen)).append(value)
         self.averages[key] = round(sum(self.fetch_times.get(key))/len(self.fetch_times.get(key)), 3)
+
