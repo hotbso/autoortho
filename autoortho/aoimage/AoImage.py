@@ -19,13 +19,17 @@ class AoImage(Structure):
         ('_errmsg', c_char*80)  #possible error message to be filled by the C routines
     ]
 
-    def __init__(self):
+    has_voids = False           # has void spots, to be propagated to the dds
+
+    def __init__(self, has_voids = False):
         self._data = 0
         self._width = 0
         self._height = 0
         self._stride = 0
         self._channels = 0
         self._errmsg = b'';
+        # beyond the struct
+        self.has_voids = has_voids
 
     def __del__(self):
         _aoi.aoimage_delete(self)
@@ -41,7 +45,7 @@ class AoImage(Structure):
         Not really needed as AoImage always loads as RGBA
         """
         assert mode == "RGBA", "Sorry, only conversion to RGBA supported"
-        new = AoImage()
+        new = AoImage(self.has_voids)
         if not _aoi.aoimage_2_rgba(self, new):
             log.error(f"AoImage.reduce_2 error: {new._errmsg.decode()}")
             return None
@@ -57,7 +61,7 @@ class AoImage(Structure):
         half = self
         while steps >= 1:
             orig = half
-            half = AoImage()
+            half = AoImage(self.has_voids)
             if not _aoi.aoimage_reduce_2(orig, half):
                 log.error(f"AoImage.reduce_2 error: {new._errmsg.decode()}")
                 return None
@@ -71,7 +75,7 @@ class AoImage(Structure):
         Enlarge by factor 2^steps
         """
         assert 1 <= steps and steps <= 4    # assert a reasonable range
-        new = AoImage()
+        new = AoImage(self.has_voids)
         height = self._height;
         if height_only != None:
             assert height_only <= self._height
@@ -113,7 +117,7 @@ class AoImage(Structure):
         return None
 
     def copy(self, height_only = 0):
-        new = AoImage()
+        new = AoImage(self.has_voids)
         if not _aoi.aoimage_copy(self, new, height_only):
             log.error(f"AoImage.copy error: {self._errmsg.decode()}")
             return None

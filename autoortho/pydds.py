@@ -99,11 +99,12 @@ class MipMap(object):
         self.endpos = endpos
         self.length = length
         self.retrieved = retrieved
+        self.has_voids = False
         self.databuffer = databuffer
         #self.databuffer = BytesIO()
 
     def __repr__(self):
-        return f"MipMap({self.idx}, {self.startpos}, {self.endpos}, {self.length}, {self.retrieved}, {self.databuffer})"
+        return f"MipMap({self.idx}, {self.startpos}, {self.endpos}, {self.length}, {self.retrieved}, {self.has_voids}, {self.databuffer})"
 
 
 class rgba_surface(Structure):
@@ -472,7 +473,6 @@ class DDS(Structure):
                     steps += 1
 
             if steps > 0:        
-                #img = img.reduce(pow(2, steps))
                 img = img.reduce_2(steps)
 
             while True:
@@ -499,6 +499,7 @@ class DDS(Structure):
                         self.mipmap_list[mipmap].databuffer = BytesIO(initial_bytes=dxtdata)
                         if not compress_bytes:
                             self.mipmap_list[mipmap].retrieved = True
+                            self.mipmap_list[mipmap].has_voids = img.has_voids
 
                         # we are already at 4x4 so push result forward to
                         # remaining MMs
@@ -507,6 +508,7 @@ class DDS(Structure):
                             for mm in self.mipmap_list[self.smallest_mm:]:
                                 mm.databuffer = BytesIO(initial_bytes=dxtdata)
                                 mm.retrieved = True
+                                mm.has_voids = img.has_voids
                                 mipmap += 1
 
                     dxtdata = None

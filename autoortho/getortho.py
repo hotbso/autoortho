@@ -362,7 +362,6 @@ class Tile(object):
     last_access = 0
 
     default_timeout = 5.0
-    has_voids = False
     first_open = True
     last_read_pos = -1      # position after last read
 
@@ -786,7 +785,7 @@ class Tile(object):
         for chunk in chunks:
             chunk.ready.wait()
             if chunk.img is None:   # deadline not met
-                self.has_voids = True
+                new_im.has_voids = True
                 continue
 
             start_x = int((chunk.width) * (chunk.col - col))
@@ -800,7 +799,7 @@ class Tile(object):
                 )
             )
 
-        if (req_full_img or req_header) and mipmap < 4 and not self.has_voids:
+        if (req_full_img or req_header) and mipmap < 4 and not new_im.has_voids:
             chunk_names = []
             for chunk in chunks:
                 chunk_names.append(chunk.cache_path)
@@ -1048,13 +1047,13 @@ class TileCacher(object):
                 return False
 
             t.refs -= 1
+            t.first_open = False
 
-            if t.has_voids:
-                # mark as not retrieved but keep other cached data
-                for m in t.dds.mipmap_list:
+            # mark mms with voids as not retrieved but keep other cached data
+            for m in t.dds.mipmap_list:
+                if m.has_voids:
                     m.retrieved = False
-                t.has_voids = False
-                t.first_open = False
+                    m.has_voids = False
 
             log.debug(f"Cache enabled.  Delay tile close for {tile_id}")
             t.last_read_pos = -1 # so a revive from the cache starts a new cycle
