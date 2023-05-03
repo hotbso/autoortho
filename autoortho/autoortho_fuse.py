@@ -330,7 +330,7 @@ class AutoOrtho(Operations):
         log.debug(f"READ: {path} {offset} {length} {fh}")
         data = None
 
-        if fh > self.tile_base_fh:
+        if fh >= self.tile_base_fh:
             log.debug(f"READ: DDS file {path}, offset {offset}, length {length}")
             ot = self._map_tile(fh)
             data = ot.read(offset, length)
@@ -372,7 +372,7 @@ class AutoOrtho(Operations):
         # if dsf_m:
             # log.info(f"RELEASE: Detected DSF close: {path}")
 
-        if fh > self.tile_base_fh:
+        if fh >= self.tile_base_fh:
             ot = self._map_tile(fh)
             self.tc._release_tile(ot)
             self._release_tile_fh(fh)
