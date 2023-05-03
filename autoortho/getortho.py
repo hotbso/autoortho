@@ -902,6 +902,12 @@ class Tile(object):
                 chunk.close()
         self.chunks = {}
 
+class OpenTile:
+    def __init__(self, tile):
+        self.tile = tile
+        
+    def read(self, offset, length):
+        return self.tile.read_dds_bytes(offset, length)
 
 class TileCacher(object):
     tiles = {}
@@ -1034,19 +1040,13 @@ class TileCacher(object):
                 # Only in this case would this cache have made a difference
                 self.hits += 1
 
-            if tile.refs > 0:
-                STATS_inc('open_mult')
             tile.refs += 1
-        return tile
+            STATS_inc(f"open_{tile.refs}")
+        return OpenTile(tile)
 
-    def _close_tile(self, row, col, map_type, zoom):
-        tile_id = self._to_tile_id(row, col, map_type, zoom)
+    def _release_tile(self, open_tile):
+        t = open_tile.tile
         with self.tc_lock:
-            t = self.tiles.get(tile_id)
-            if not t:
-                log.warning(f"Attempted to close unknown tile {tile_id}!")
-                return False
-
             t.refs -= 1
             t.first_open = False
 

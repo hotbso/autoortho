@@ -62,13 +62,9 @@ def locked(fn):
 
 class AutoOrtho(Operations):
 
-    open_paths = []
-    read_paths = []
-
     path_dict = {}
-    tile_dict = {}
 
-    fh = 1000
+    tile_base_fh = 1000
 
     default_uid = -1
     default_gid = -1
@@ -86,15 +82,34 @@ class AutoOrtho(Operations):
         self.cache_dir = cache_dir
 
         self.tc = getortho.TileCacher(cache_dir)
-    
+
         #self.path_condition = threading.Condition()
         #self.read_lock = threading.Lock()
         self._lock = threading.RLock()
+        self.tile_fh = []
 
-    
 
     # Helpers
     # =======
+
+    @locked
+    def _allocate_tile_fh(self, tile):
+        nfh = len(self.tile_fh)
+        for i in range(0, nfh):
+            if self.tile_fh[i] is None:
+                self.tile_fh[i] = tile
+                return self.tile_base_fh + i
+
+        self.tile_fh.append(tile)
+        return self.tile_base_fh + nfh
+
+    @locked
+    def _release_tile_fh(self, fh):
+        self.tile_fh[fh - self.tile_base_fh] = None
+
+    @locked
+    def _map_tile(self, fh):
+        return self.tile_fh[fh - self.tile_base_fh]
 
     def _full_path(self, partial):
         if partial.startswith("/"):
@@ -147,15 +162,15 @@ class AutoOrtho(Operations):
                 dds_size = 22369776
 
             attrs = {
-                'st_atime': 1649857250.382081, 
-                'st_ctime': 1649857251.726115, 
+                'st_atime': 1649857250.382081,
+                'st_ctime': 1649857251.726115,
                 'st_gid': self.default_gid,
                 'st_uid': self.default_uid,
                 #'st_mode': 33204,
                 'st_mode': 33206,
-                'st_mtime': 1649857251.726115, 
-                'st_nlink': 1, 
-                'st_size': dds_size, 
+                'st_mtime': 1649857251.726115,
+                'st_nlink': 1,
+                'st_size': dds_size,
                 'st_blksize': 32768
                 #'st_blksize': 16384
                 #'st_blksize': 8192
@@ -179,7 +194,7 @@ class AutoOrtho(Operations):
 
         #attrs['st_uid'] = self.default_uid
         #attrs['st_gid'] = self.default_gid
-        
+
         #attrs['st_mode'] = 33204
 
         #log.info(f"GETATTR: FH: {fh}")
@@ -230,15 +245,15 @@ class AutoOrtho(Operations):
         full_path = self._full_path(path)
         if platform.system() == 'Windows':
             stats = {
-                    'f_bavail':47602498, 
+                    'f_bavail':47602498,
                     'f_bfree':47602498,
-                    'f_blocks':124699647, 
-                    'f_favail':1000000, 
-                    'f_ffree':1000000, 
-                    'f_files':999, 
+                    'f_blocks':124699647,
+                    'f_favail':1000000,
+                    'f_ffree':1000000,
+                    'f_files':999,
                     'f_frsize':4096,
                     'f_flag':1024,
-                    'f_bsize':4096 
+                    'f_bsize':4096
             }
             return stats
             # st = os.stat(full_path)
@@ -273,8 +288,6 @@ class AutoOrtho(Operations):
 
     #@locked
     def open(self, path, flags):
-        #h = self.fh 
-        #self.fh += 1
         h = 0
 
         #log.info(f"READ CACHE {self.read.cache_info()}")
@@ -295,7 +308,8 @@ class AutoOrtho(Operations):
             row = int(row)
             col = int(col)
             zoom = int(zoom)
-            t = self.tc._open_tile(row, col, maptype, zoom) 
+            t = self.tc._open_tile(row, col, maptype, zoom)
+            h = self._allocate_tile_fh(t)
         elif platform.system() == 'Windows':
             h = os.open(full_path, flags|os.O_BINARY)
         else:
@@ -312,44 +326,15 @@ class AutoOrtho(Operations):
         return fd
 
     #@profile
-    #@lru_cache
     def read(self, path, length, offset, fh):
         log.debug(f"READ: {path} {offset} {length} {fh}")
-        #if length > 32768:
-        #    log.info(f"READ: {path} {offset} {length} {fh}")
         data = None
-        
-        #full_path = self._full_path(path)
-        #log.debug(f"FULL PATH: {full_path}")
-        #exists = os.path.exists(full_path)
-        
-        #ter_m = self.ter_re.match(path)
-        dds_m = self.dds_re.match(path)
-        if dds_m:
-            # with self.path_condition:
-            #     while path in self.read_paths:
-            #         log.debug(f"WAIT ON READ: DDS file {path}")
-            #         self.path_condition.wait()
-            #     
-            #     # Add current path we are reading
-            #     self.read_paths.append(path)
 
-            row, col, maptype, zoom = dds_m.groups()
-            row = int(row)
-            col = int(col)
-            zoom = int(zoom)
-            log.debug(f"READ: DDS file {path}, offset {offset}, length {length} (%s) " % str(dds_m.groups()))
-            
-            t = self.tc._get_tile(row, col, maptype, zoom) 
-            data = t.read_dds_bytes(offset, length)
-        
-            # Indicate we are done reading
-            # with self.path_condition:
-            #     self.read_paths.remove(path)
-            #     self.path_condition.notify_all()
-            return data
-
-        if not data:
+        if fh > self.tile_base_fh:
+            log.debug(f"READ: DDS file {path}, offset {offset}, length {length}")
+            ot = self._map_tile(fh)
+            data = ot.read(offset, length)
+        else:
             os.lseek(fh, offset, os.SEEK_SET)
             data = os.read(fh, length)
             log.debug(f"READ: Read {len(data)} bytes.")
@@ -382,30 +367,15 @@ class AutoOrtho(Operations):
     #@locked
     def release(self, path, fh):
         log.debug(f"RELEASE: {path}")
-        #dsf_m = self.dsf_re.match(path)
         #ter_m = self.ter_re.match(path)
-        dsf_m = self.dsf_re.match(path)
-        if dsf_m:
-            log.info(f"RELEASE: Detected DSF close: {path}")
+        # dsf_m = self.dsf_re.match(path)
+        # if dsf_m:
+            # log.info(f"RELEASE: Detected DSF close: {path}")
 
-        dds_m = self.dds_re.match(path)
-        if dds_m:
-            log.debug(f"RELEASE DDS: {path}")
-            row, col, maptype, zoom = dds_m.groups()
-            row = int(row)
-            col = int(col)
-            zoom = int(zoom)
-            self.tc._close_tile(row, col, maptype, zoom)
-
-            #self.tc._close_tile(f"{row}_{col}_{maptype}_{zoom}")
-            #t = self.tc._get_tile(row, col, maptype, zoom) 
-            #t.refs -= 1
-            #with self.path_condition:
-            #    if path in self.open_paths:
-            #        log.debug(f"RELEASE: {path}")
-            #        self.open_paths.remove(path)
-            #        self.path_condition.notify_all()
-            return 0
+        if fh > self.tile_base_fh:
+            ot = self._map_tile(fh)
+            self.tc._release_tile(ot)
+            self._release_tile_fh(fh)
         else:
             return os.close(fh)
 
@@ -414,19 +384,14 @@ class AutoOrtho(Operations):
         return self.flush(path, fh)
 
 
-    def close(self, path, fh):
-        log.info(f"CLOSE: {path}")
-        return 0
-
-
 def run(ao, mountpoint, nothreads=False):
     log.info(f"MOUNT: {mountpoint}")
 
     FUSE(
         ao,
-        mountpoint, 
-        nothreads=nothreads, 
-        foreground=True, 
+        mountpoint,
+        nothreads=nothreads,
+        foreground=True,
         allow_other=True,
         #auto_cache=True,
         #max_read=32768,
