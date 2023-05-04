@@ -360,9 +360,7 @@ class Tile(object):
     refs = None
     last_access = 0
 
-    default_timeout = 5.0
     first_open = True
-    last_read_pos = -1      # position after last read
 
     # a global zoom out of everything
     global_zoom_out = 1
@@ -413,10 +411,6 @@ class Tile(object):
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
         self.bg_work = []
-
-        # just ensure that it's always defined with a reasonable value
-        self.deadline = time.time() + self.default_timeout
-
 
     def __lt__(self, other):
         return self.priority < other.priority
@@ -471,13 +465,13 @@ class Tile(object):
                 return m.idx
         return self.dds.mipmap_list[-1].idx
 
-    def get_bytes(self, offset, length):
+    def get_bytes(self, offset, length, ot_ctx):
 
         mipmap = self.find_mipmap_pos(offset)
         log.debug(f"Get_bytes for mipmap {mipmap} ...")
         if mipmap > 4:
             # Just get the entire mipmap
-            self.get_mipmap(4)
+            self.get_mipmap(ot_ctx, 4)
             return True
 
         # Exit if already retrieved
@@ -487,7 +481,7 @@ class Tile(object):
 
         mm = self.dds.mipmap_list[mipmap]
         if length >= mm.length:
-            self.get_mipmap(mipmap)
+            self.get_mipmap(ot_ctx, mipmap)
             return True
 
         log.debug(f"Retrieving {length} bytes from mipmap {mipmap} offset {offset}")
@@ -516,7 +510,7 @@ class Tile(object):
 
         log.debug(f"Startrow: {startrow} Endrow: {endrow}")
 
-        new_im = self.get_img(mipmap, startrow, endrow)
+        new_im = self.get_img(mipmap, ot_ctx, startrow, endrow)
         if not new_im:
             log.debug("No updates, so no image generated")
             return True
@@ -553,7 +547,7 @@ class Tile(object):
 
         return True
 
-    def read_dds_bytes(self, offset, length):
+    def read_dds_bytes(self, offset, length, ot_ctx):
         log.debug(f"READ DDS BYTES: {offset} {length}")
 
         if offset > 0 and offset < self.lowest_offset:
@@ -562,16 +556,11 @@ class Tile(object):
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
-        # new read cycle or continued read?
-        if offset != self.last_read_pos:
-            #print(f"new cycle: {self.last_read_pos} {offset}")
-            self.deadline = time.time() + self.default_timeout
-
         part1 = None
         if offset == 0:
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
-            self.get_bytes(0, length)
+            self.get_bytes(0, length, ot_ctx)
         #elif offset < 32768:
         #elif offset < 65536:
         elif offset < 131072:
@@ -579,13 +568,13 @@ class Tile(object):
         #elif offset < 1048576:
             # How far into mipmap 0 do we go before just getting the whole thing
             log.debug("READ_DDS_BYTES: Middle of mipmap 0")
-            self.get_bytes(0, length + offset)
+            self.get_bytes(0, length + offset, ot_ctx)
         elif (offset + length) < mipmap.endpos:
             # Total length is within this mipmap.  Make sure we have it.
             log.debug(f"READ_DDS_BYTES: Detected middle read for mipmap {mipmap.idx}")
             if not mipmap.retrieved:
                 log.debug(f"READ_DDS_BYTES: Retrieve {mipmap.idx}")
-                self.get_mipmap(mipmap.idx)
+                self.get_mipmap(ot_ctx, mipmap.idx)
         else:
             log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
             # We already know we start before the end of this mipmap
@@ -594,7 +583,7 @@ class Tile(object):
             # If we seek here (i.e. we are not in a sequential read cycle) we conclude that
             # this is just a collateral effect of input blocking and data does not matter.
             # So we do not do a costly construction of the end row of this mm but return zeroes.
-            if mm_idx < 4 and offset != self.last_read_pos:
+            if mm_idx < 4 and offset != ot_ctx.last_read_pos:
                 #print(f"Seek into middle of mm {mm_idx} {offset} {length}")
                 delta = mipmap.endpos - offset
                 part1 = b'\x00' * delta
@@ -603,14 +592,13 @@ class Tile(object):
                 assert length >= 0
             else:
                 # Get bytes prior to this mipmap
-                self.get_bytes(offset, length)
+                self.get_bytes(offset, length, ot_ctx)
 
             # Get the entire next mipmap
-            self.get_mipmap(mm_idx + 1)
+            self.get_mipmap(ot_ctx, mm_idx + 1)
 
         self.bytes_read += length
 
-        self.last_read_pos = offset + length
         # Seek and return data
         self.dds.seek(offset)
         if part1 is None:
@@ -628,7 +616,7 @@ class Tile(object):
         self.bg_work = []
 
     @locked
-    def get_img(self, mipmap, startrow=0, endrow=None):
+    def get_img(self, mipmap, ot_ctx, startrow=0, endrow=None):
         #
         # Get an image for a particular mipmap
         #
@@ -733,7 +721,7 @@ class Tile(object):
                 assert bg_width == 1
                 # submit in front of the other chunks
                 bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, -1, cache_dir=self.cache_dir)
-                bg_chunk.deadline = self.deadline - 0.5
+                bg_chunk.deadline = ot_ctx.deadline - 0.5
                 chunk_getter.submit(bg_chunk)
 
             # submitting more chunks than 'credits' will end in a timeout anyway
@@ -753,8 +741,8 @@ class Tile(object):
                     if credits > 0:
                         #log.info(f"SUBMIT: {chunk}")
                         chunk.ready.clear()
-                        chunk.priority = self.deadline
-                        chunk.deadline = self.deadline
+                        chunk.priority = ot_ctx.deadline
+                        chunk.deadline = ot_ctx.deadline
                         chunk_getter.submit(chunk)
                     else:
                         STATS['submit_skip'] = STATS.get('submit_skip', 0) + 1
@@ -823,7 +811,7 @@ class Tile(object):
         return new_im
 
     @locked
-    def get_mipmap(self, mipmap=0):
+    def get_mipmap(self, ot_ctx, mipmap=0):
         #
         # Protect this method to avoid simultaneous threads attempting mm builds at the same time.
         # Otherwise we risk contention such as waiting get_img call attempting to build an image as
@@ -837,7 +825,7 @@ class Tile(object):
 
         # We can have multiple threads wait on get_img ...
         log.debug(f"GET_MIPMAP: Next call is get_img which may block!.............")
-        new_im = self.get_img(mipmap)
+        new_im = self.get_img(mipmap, ot_ctx)
         if not new_im:
             log.debug("GET_MIPMAP: No updates, so no image generated")
             return True
@@ -902,19 +890,36 @@ class Tile(object):
                 chunk.close()
         self.chunks = {}
 
-class OpenTile:
+class OpenTile_Ctx:
+    """
+    Context of an open tile.
+    """
+
+    _default_timeout = 5.0
+
+    # public
+    deadline = 0            # deadline for next read cycle
+    last_read_pos = -1      # position after last read
+
     def __init__(self, tile):
         self.tile = tile
         
     def read(self, offset, length):
-        return self.tile.read_dds_bytes(offset, length)
+        self.tile.last_access = time.time()
+
+        # new read cycle or continued read?
+        if offset != self.last_read_pos:
+            #print(f"new cycle: {self.last_read_pos} {offset}")
+            self.deadline = time.time() + self._default_timeout
+
+        self.last_read_pos = offset + length
+        return self.tile.read_dds_bytes(offset, length, self)
 
 class TileCacher(object):
     tiles = {}
 
     hits = 0
     misses = 0
-    access_ticker = 0
 
     cache_mem_lim = pow(2,30) * 2
     cache_tile_lim = 100
@@ -980,7 +985,7 @@ class TileCacher(object):
                     by_age = sorted(self.tiles, key=lambda id: self.tiles.get(id).last_access)
                     for i in by_age[:20]:
                         t = self.tiles[i]
-                        #print(f"age: {t.last_access} {self.access_ticker}")
+                        #print(f"age: {t.last_access}")
                         if t.refs <= 0:
                             del(self.tiles[i])
                             close_q.append(t)
@@ -1006,17 +1011,6 @@ class TileCacher(object):
 
             time.sleep(15)
 
-    def _get_tile(self, row, col, map_type, zoom):
-        self.access_ticker += 1
-        idx = self._to_tile_id(row, col, map_type, zoom)
-        with self.tc_lock:
-            tile = self.tiles.get(idx)
-            if not tile:
-                log.error("Oh, _get_tile of unopened tile")
-                tile = self._open_tile(row, col, map_type, zoom)
-
-        tile.last_access = self.access_ticker
-        return tile
 
     def _open_tile(self, row, col, map_type, zoom):
         if self.maptype_override:
@@ -1042,7 +1036,7 @@ class TileCacher(object):
 
             tile.refs += 1
             STATS_inc(f"open_{tile.refs}")
-        return OpenTile(tile)
+        return OpenTile_Ctx(tile)
 
     def _release_tile(self, open_tile):
         t = open_tile.tile
@@ -1056,5 +1050,5 @@ class TileCacher(object):
                     m.retrieved = False
                     m.has_voids = False
 
-            t.last_read_pos = -1 # so a revive from the cache starts a new cycle
+            self.last_read_pos = -1 # so a revive from the cache starts a new cycle
             return True
