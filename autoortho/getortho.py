@@ -152,6 +152,7 @@ class EventRate:
 
     def __init__(self, name, tick_delta):
         self.tick_delta = tick_delta
+        self.qsize = int(0.75 * self.max_len)
         self.name = name
         self.t = threading.Thread(target=self._ticker, daemon=True)
         self.t.start()
@@ -166,7 +167,7 @@ class EventRate:
             if self.rate > 0.0:
                 self.qsize -= 2 * self.rate * self.tick_delta
             elif self.rate < 1.0:
-                self.qsize += 1
+                self.qsize += 5
 
             self.qsize = int(max(self.min_len, min(self.max_len, self.qsize)))
             print(f"{self.name} rate: {self.rate:1.2f} {self.qsize}")
@@ -652,8 +653,10 @@ class Tile(object):
             if self.hdr_im is None:
                 self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
                 if self.hdr_im:
-                    STATS['jpg_hdr_hit'] = STATS.get('jpg_hdr_hit', 0) + 1
+                    STATS_inc('jpg_hdr_dsk_hit')
                     #print(f"opened {hdr_jpg_path}")
+            else:
+                STATS_inc('jpg_hdr_mem_hit')
 
             if self.hdr_im:
                 if gzo_effective > 0:
@@ -1035,7 +1038,7 @@ class TileCacher(object):
                 self.hits += 1
 
             tile.refs += 1
-            STATS_inc(f"open_{tile.refs}")
+            #STATS_inc(f"open_{tile.refs}") # up to 8!
         return OpenTile_Ctx(tile)
 
     def _release_tile(self, open_tile):
