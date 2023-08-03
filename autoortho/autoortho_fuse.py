@@ -11,6 +11,7 @@ import types
 import errno
 import random
 import psutil
+import ctypes
 import platform
 import threading
 import itertools
@@ -24,7 +25,7 @@ import logging
 log = logging.getLogger(__name__)
 
 #from fuse import FUSE, FuseOSError, Operations, fuse_get_context
-from refuse.high import FUSE, FuseOSError, Operations, fuse_get_context
+from refuse.high import FUSE, FuseOSError, Operations, fuse_get_context, fuse_exit, _libfuse
 
 import getortho
 
@@ -179,6 +180,24 @@ class AutoOrtho(Operations):
                 #'st_ino': 844424931910150,
                 #'st_dev': 1421433975
             }
+        elif path.endswith(".poison"):
+            log.info("Poison pill.  Exiting!")
+            fuse_ptr = ctypes.c_void_p(_libfuse.fuse_get_context().contents.fuse)
+            #threading.Thread(target=do_fuse_exit, args=(fuse_ptr,)).start()
+            do_fuse_exit(fuse_ptr)
+            
+            attrs = {
+                'st_atime': 1649857250.382081, 
+                'st_ctime': 1649857251.726115, 
+                'st_gid': self.default_gid,
+                'st_uid': self.default_uid,
+                'st_mode': 33206,
+                'st_mtime': 1649857251.726115, 
+                'st_nlink': 1, 
+                'st_size': 0, 
+                'st_blksize': 32768
+            }
+            return attrs
         else:
             full_path = self._full_path(path)
             exists = os.path.exists(full_path)
@@ -382,6 +401,15 @@ class AutoOrtho(Operations):
     def fsync(self, path, fdatasync, fh):
         log.info(f"FSYNC: {path}")
         return self.flush(path, fh)
+
+
+def do_fuse_exit(fuse_ptr=None):
+    print("fuse_exit called")
+    #time.sleep(1)
+    if not fuse_ptr:
+        fuse_ptr = ctypes.c_void_p(_libfuse.fuse_get_context().contents.fuse)
+    print(fuse_ptr)
+    _libfuse.fuse_exit(fuse_ptr)
 
 
 def run(ao, mountpoint, nothreads=False):

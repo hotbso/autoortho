@@ -9,8 +9,13 @@ log = logging.getLogger(__name__)
 
 STATS={}
 
-def STATS_inc(name):
-    STATS[name] = STATS.get(name, 0) + 1
+
+def set_stat(stat, value):
+    STATS[stat] = value
+
+def inc_stat(stat, amount=1):
+    STATS[stat] = STATS.get(stat, 0) + amount
+
 
 class AOStats(object):
     def __init__(self):
@@ -32,7 +37,7 @@ class AOStats(object):
 
     def show(self):
         while self.running:
-            time.sleep(5)
+            time.sleep(10)
             #s = {k:v for k,v in self.__dict__.items() if not k.startswith('_')}
             log.info(f"STATS: ID: {STATS}")
 
@@ -63,4 +68,3 @@ class StatTracker(object):
         self.counts[key] = self.counts.get(key, 0) + 1
         self.fetch_times.setdefault(key, collections.deque(maxlen=self.maxlen)).append(value)
         self.averages[key] = round(sum(self.fetch_times.get(key))/len(self.fetch_times.get(key)), 3)
-

@@ -18,7 +18,7 @@ import psutil
 from aoimage import AoImage
 
 from aoconfig import CFG
-from aostats import STATS, StatTracker, STATS_inc
+from aostats import STATS, StatTracker, inc_stat
 
 MEMTRACE = False
 
@@ -226,10 +226,10 @@ class Chunk(object):
     def get_cache(self):
         self.img = AoImage.open(self.cache_path, log_error = False)
         if self.img:
-            STATS_inc('chunk_hit')
+            inc_stat('chunk_hit')
             return True
         else:
-            STATS_inc('chunk_miss')
+            inc_stat('chunk_miss')
             return False
 
     def save_cache(self, data):
@@ -653,10 +653,10 @@ class Tile(object):
             if self.hdr_im is None:
                 self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
                 if self.hdr_im:
-                    STATS_inc('jpg_hdr_dsk_hit')
+                    inc_stat('jpg_hdr_dsk_hit')
                     #print(f"opened {hdr_jpg_path}")
             else:
-                STATS_inc('jpg_hdr_mem_hit')
+                inc_stat('jpg_hdr_mem_hit')
 
             if self.hdr_im:
                 if gzo_effective > 0:
@@ -1038,7 +1038,7 @@ class TileCacher(object):
                 self.hits += 1
 
             tile.refs += 1
-            #STATS_inc(f"open_{tile.refs}") # up to 8!
+            #inc_stat(f"open_{tile.refs}") # up to 8!
         return OpenTile_Ctx(tile)
 
     def _release_tile(self, open_tile):
