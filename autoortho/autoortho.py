@@ -12,6 +12,7 @@ import aoconfig
 import aostats
 import winsetup
 import config_ui
+import getortho
 
 import flighttrack
 #import multiprocessing
@@ -21,7 +22,7 @@ from version import __version__
 import logging
 log = logging.getLogger(__name__)
 
-def run(root, mountpoint, threading=True):
+def run(root, mountpoint, tc, threading=True):
     #aostats.STATS = statsdict
     #import flighttrack
     #flighttrack.ft.running = flight_running
@@ -41,12 +42,12 @@ def run(root, mountpoint, threading=True):
             os.environ['FUSE_LIBRARY_PATH'] = libpath
             root = os.path.expanduser(root)
             mountpoint = os.path.expanduser(mountpoint)
-            winsetup.setup_dokan_mount(mountpoint) 
+            winsetup.setup_dokan_mount(mountpoint)
             log.info(f"AutoOrtho:  root: {root}  mountpoint: {mountpoint}")
             import autoortho_fuse
             autoortho_fuse.run(
-                    autoortho_fuse.AutoOrtho(root), 
-                    mountpoint, 
+                    autoortho_fuse.AutoOrtho(root, tile_cache = tc),
+                    mountpoint,
                     nothreads
             )
         elif systemtype == "winfsp-FUSE":
@@ -54,19 +55,19 @@ def run(root, mountpoint, threading=True):
             os.environ['FUSE_LIBRARY_PATH'] = libpath
             root = os.path.expanduser(root)
             mountpoint = os.path.expanduser(mountpoint)
-            winsetup.setup_winfsp_mount(mountpoint) 
+            winsetup.setup_winfsp_mount(mountpoint)
             log.info(f"AutoOrtho:  root: {root}  mountpoint: {mountpoint}")
             import autoortho_fuse
             autoortho_fuse.run(
-                    autoortho_fuse.AutoOrtho(root), 
-                    mountpoint, 
+                    autoortho_fuse.AutoOrtho(root),
+                    mountpoint,
                     nothreads
             )
     else:
         log.info("Running in FUSE mode.")
         root = os.path.expanduser(root)
         mountpoint = os.path.expanduser(mountpoint)
-    
+
         if not os.path.exists(mountpoint):
             os.makedirs(mountpoint)
         if not os.path.isdir(mountpoint):
@@ -77,7 +78,7 @@ def run(root, mountpoint, threading=True):
         import autoortho_fuse
         autoortho_fuse.run(
                 autoortho_fuse.AutoOrtho(root),
-                mountpoint, 
+                mountpoint,
                 nothreads
         )
 
@@ -155,9 +156,12 @@ def main():
         daemon=True
     )
     ftrack.start()
-    
+
     stats.start()
-    
+
+    # create one gobal tile cache
+    tc = getortho.TileCacher(CFG.paths.cache_dir)
+
     do_threads = True
     if do_threads:
         mount_threads = []
@@ -166,14 +170,15 @@ def main():
                 target=run,
                 daemon=False,
                 args=(
-                    scenery.get('root'), 
-                    scenery.get('mount'), 
+                    scenery.get('root'),
+                    scenery.get('mount'),
+                    tc,
                     CFG.fuse.threading
                 )
             )
             t.start()
             mount_threads.append(t)
-        
+
         try:
             def handle_sigterm(sig, frame):
                 raise(SystemExit)
@@ -193,11 +198,11 @@ def main():
     else:
         scenery = CFG.scenery_mounts[0]
         run(
-            scenery.get('root'), 
-            scenery.get('mount'), 
+            scenery.get('root'),
+            scenery.get('mount'),
             CFG.fuse.threading
         )
-        
+
     stats.stop()
     flighttrack.ft.stop()
 

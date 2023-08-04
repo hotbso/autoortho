@@ -73,7 +73,7 @@ class AutoOrtho(Operations):
     startup = True
 
 
-    def __init__(self, root, cache_dir='.cache'):
+    def __init__(self, root, cache_dir='.cache', tile_cache = None):
         log.info(f"ROOT: {root}")
         self.dds_re = re.compile(".*/(\d+)[-_](\d+)[-_]((?!ZL)\S*)(\d{2}).dds")
         self.ktx2_re = re.compile(".*/(\d+)[-_](\d+)[-_]((?!ZL)\D*)(\d+).ktx2")
@@ -82,7 +82,10 @@ class AutoOrtho(Operations):
         self.root = root
         self.cache_dir = cache_dir
 
-        self.tc = getortho.TileCacher(cache_dir)
+        if tile_cache is not None:
+            self.tc = tile_cache
+        else:
+            self.tc = getortho.TileCacher(cache_dir)
 
         #self.path_condition = threading.Condition()
         #self.read_lock = threading.Lock()
@@ -185,16 +188,16 @@ class AutoOrtho(Operations):
             fuse_ptr = ctypes.c_void_p(_libfuse.fuse_get_context().contents.fuse)
             #threading.Thread(target=do_fuse_exit, args=(fuse_ptr,)).start()
             do_fuse_exit(fuse_ptr)
-            
+
             attrs = {
-                'st_atime': 1649857250.382081, 
-                'st_ctime': 1649857251.726115, 
+                'st_atime': 1649857250.382081,
+                'st_ctime': 1649857251.726115,
                 'st_gid': self.default_gid,
                 'st_uid': self.default_uid,
                 'st_mode': 33206,
-                'st_mtime': 1649857251.726115, 
-                'st_nlink': 1, 
-                'st_size': 0, 
+                'st_mtime': 1649857251.726115,
+                'st_nlink': 1,
+                'st_size': 0,
                 'st_blksize': 32768
             }
             return attrs
