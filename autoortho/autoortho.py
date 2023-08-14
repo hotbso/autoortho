@@ -159,8 +159,8 @@ def main():
 
     stats.start()
 
-    # create one gobal tile cache
-    tc = getortho.TileCacher(CFG.paths.cache_dir)
+    # create one global tile cache
+    tc = getortho.TileCacher(CFG.paths.cache_dir + "-ht")
 
     do_threads = True
     if do_threads:

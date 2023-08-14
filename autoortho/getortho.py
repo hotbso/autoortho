@@ -941,7 +941,7 @@ class TileCacher(object):
         log.info(f"Will use Compressor: {CFG.pydds.compressor}")
         self.tc_lock = threading.RLock()
 
-        self.cache_dir = CFG.paths.cache_dir
+        self.cache_dir = CFG.paths.cache_dir + "-ht"
         log.info(f"Cache dir: {self.cache_dir}")
         self.min_zoom = CFG.autoortho.min_zoom
 
