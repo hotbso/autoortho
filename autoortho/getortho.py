@@ -646,8 +646,8 @@ class Tile(object):
 
         new_im = None
 
-        mm_jpg_path = os.path.join(self.cache_dir, f"mm_{self.col}_{self.row}_{self.maptype}_{zoom}_{mipmap}.jpg")
-        hdr_jpg_path = os.path.join(self.cache_dir, f"hdr_{self.col}_{self.row}_{self.maptype}_{zoom}.jpg")
+        mm_jpg_path = os.path.join(self.cache_dir, f"mm_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{mipmap}.jpg")
+        hdr_jpg_path = os.path.join(self.cache_dir, f"hdr_{self.col}_{self.row}_{self.maptype}_{self.zoom}_{gzo_effective}.jpg")
 
         if req_header:   # header only
             if self.hdr_im is None:
