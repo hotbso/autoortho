@@ -28,7 +28,7 @@ markupsafe==2.1.2
     # via
     #   jinja2
     #   werkzeug
-pillow-simd @ https://download.lfd.uci.edu/pythonlibs/archived/Pillow_SIMD-9.0.0.post0-cp310-cp310-win_amd64.whl
+#pillow-simd @ https://download.lfd.uci.edu/pythonlibs/archived/Pillow_SIMD-9.0.0.post0-cp310-cp310-win_amd64.whl
     # via -r requirements-win.in
 psutil==5.9.4
     # via -r requirements-win.in
@@ -44,5 +44,5 @@ six==1.16.0
     # via eventlet
 werkzeug==2.2.2
     # via flask
-winfspy==0.8.3
+#winfspy==0.8.3
     # via -r .\requirements-win.in
