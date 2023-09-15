@@ -610,7 +610,7 @@ class Tile(object):
     @locked
     def execute_bg_work(self):
         for wu in self.bg_work:
-            print(f"Executing {wu}")
+            log.debug(f"Executing {wu}")
             wu.execute()
             self.chunks[wu.zoom] = []
 
