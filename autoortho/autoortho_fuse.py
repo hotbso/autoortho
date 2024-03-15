@@ -321,7 +321,7 @@ class AutoOrtho(Operations):
 
         dsf_m = self.dsf_re.match(path)
         if dsf_m:
-            log.info(f"OPEN: Detected DSF open: {path}")
+            log.debug(f"OPEN: Detected DSF open: {path}")
         #dsf_m = self.dsf_re.match(path)
         #ter_m = self.ter_re.match(path)
         dds_m = self.dds_re.match(path)

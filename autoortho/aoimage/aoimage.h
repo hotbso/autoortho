@@ -50,4 +50,7 @@ AOIAPI void aoimage_tobytes(aoimage_t *img, uint8_t *data);
 AOIAPI int32_t aoimage_copy(const aoimage_t *s_img, aoimage_t *d_img, uint32_t s_height_only);
 // in place: img + pasted(p_img)
 AOIAPI int32_t aoimage_paste(aoimage_t *img, const aoimage_t *p_img, uint32_t x, uint32_t y);
+
+// in place desaturation
+AOIAPI int32_t aoimage_desaturate(aoimage_t *img, float saturation);
 #endif

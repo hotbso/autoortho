@@ -365,6 +365,7 @@ class Tile(object):
 
     # a global zoom out of everything
     global_zoom_out = 1
+    desaturate = 0.55
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -616,8 +617,18 @@ class Tile(object):
 
         self.bg_work = []
 
-    @locked
     def get_img(self, mipmap, ot_ctx, startrow=0, endrow=None):
+        im = self._get_img(mipmap, ot_ctx, startrow, endrow)
+        if im is None:
+            return None
+
+        if self.desaturate is not None or self.desaturate < 1.0:
+            im = im.copy().desaturate(self.desaturate)
+
+        return im
+
+    @locked
+    def _get_img(self, mipmap, ot_ctx, startrow=0, endrow=None):
         #
         # Get an image for a particular mipmap
         #
@@ -906,7 +917,7 @@ class OpenTile_Ctx:
 
     def __init__(self, tile):
         self.tile = tile
-        
+
     def read(self, offset, length):
         self.tile.last_access = time.time()
 

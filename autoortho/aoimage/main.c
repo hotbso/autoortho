@@ -46,4 +46,7 @@ int main(void) {
     }
 
     aoimage_write_jpg("en_16_r0.jpg", &e16_r0_img, 50);
+
+    aoimage_desaturate(&img, 0.6);
+    aoimage_write_jpg("desaturated.jpg", &img, 50);
 }

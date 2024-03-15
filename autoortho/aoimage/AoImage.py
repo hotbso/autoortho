@@ -124,6 +124,16 @@ class AoImage(Structure):
 
         return new
 
+    def desaturate(self, saturation = 1.0):
+        assert 0.0 <= saturation and saturation <= 1.0
+        if saturation == 1.0 or saturation is None:
+            return self
+
+        if not _aoi.aoimage_desaturate(self, saturation):
+            log.error(f"AoImage.desaturate error: {self._errmsg.decode()}")
+            return None
+        return self
+
     @property
     def size(self):
         return self._width, self._height
@@ -179,6 +189,7 @@ _aoi.aoimage_tobytes.argtypes = (POINTER(AoImage), c_char_p)
 _aoi.aoimage_from_memory.argtypes = (POINTER(AoImage), c_char_p, c_uint32)
 _aoi.aoimage_copy.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32)
 _aoi.aoimage_paste.argtypes = (POINTER(AoImage), POINTER(AoImage), c_uint32, c_uint32)
+_aoi.aoimage_desaturate.argtypes = (POINTER(AoImage), c_float)
 
 def main():
     logging.basicConfig(level = logging.DEBUG)
@@ -205,6 +216,8 @@ def main():
 
     img = open("../testfiles/test_tile.jpg")
     log.info(f"AoImage.open {img}")
+
+    img.copy().desaturate(0.55).write_jpg("desaturated.jpg")
 
     img_hdr = img.copy(256)
     img_hdr.write_jpg("img_hdr.jpg")
