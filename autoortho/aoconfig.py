@@ -90,6 +90,8 @@ xplane_udp_port = 49000
 # Max size of the image disk cache in GB. Minimum of 10GB
 file_cache_size = 30
 
+[coloring]
+saturation = 1.0
 """
 
     def __init__(self, conf_file=None):

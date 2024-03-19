@@ -409,6 +409,8 @@ class Tile(object):
         else:
             use_ispc=False
 
+        self.saturation = float(CFG.coloring.saturation)
+
         self.dds = pydds.DDS(self.width*256, self.height*256, ispc=use_ispc,
                 dxt_format=CFG.pydds.format)
         self.id = f"{row}_{col}_{maptype}_{zoom}"
@@ -622,8 +624,8 @@ class Tile(object):
         if im is None:
             return None
 
-        if self.desaturate is not None or self.desaturate < 1.0:
-            im = im.copy().desaturate(self.desaturate)
+        if self.saturation < 1.0:
+            im = im.copy().desaturate(self.saturation)
 
         return im
 
