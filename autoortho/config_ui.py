@@ -27,7 +27,7 @@ CUR_PATH = os.path.dirname(os.path.realpath(__file__))
 
 
 class ConfigUI(object):
-   
+
     status = None
     warnings = []
     errors = []
@@ -73,7 +73,7 @@ class ConfigUI(object):
             log.info(f"Running setup!")
             log.info("-"*28)
             scenery_path = input(f"Enter path to X-Plane 11 custom_scenery directory ({scenery_path}) : ") or scenery_path
-            
+
             self.config['paths']['scenery_path'] = scenery_path
             self.config['general']['showconfig'] = str(showconfig)
             self.config['autoortho']['maptype_override'] = maptype
@@ -93,11 +93,11 @@ class ConfigUI(object):
 
     def ui_loop(self):
         # Main GUI loop
-        
+
         scenery_path = self.cfg.paths.scenery_path
         showconfig = self.cfg.general.showconfig
         maptype = self.cfg.autoortho.maptype_override
-        maptypes = ['', 'BI', 'NAIP', 'Arc', 'EOX', 'USGS', 'Firefly'] 
+        maptypes = ['', 'BI', 'NAIP', 'Arc', 'EOX', 'USGS', 'Firefly']
 
         sg.theme('DarkAmber')
 
@@ -111,13 +111,13 @@ class ConfigUI(object):
                 #),
                 sg.Image(os.path.join(CUR_PATH, 'imgs', 'banner1.png'), subsample=2),
             ],
-            #[sg.Text(f'ver: {__version__}')], 
+            #[sg.Text(f'ver: {__version__}')],
             #[sg.Image(os.path.join(CUR_PATH, 'imgs', 'flight1.png'), subsample=3)],
             [sg.HorizontalSeparator(pad=5)],
             [
-                sg.Text('X-Plane scenery dir:', size=(18,1)), 
+                sg.Text('X-Plane scenery dir:', size=(18,1)),
                 sg.InputText(scenery_path, size=(45,1), key='scenery_path',
-                    metadata={'section':self.cfg.paths}), 
+                    metadata={'section':self.cfg.paths}),
                 sg.FolderBrowse(key="scenery_b", target='scenery_path', initial_folder=scenery_path)
             ],
             [
@@ -148,7 +148,7 @@ class ConfigUI(object):
                 sg.Text('Cache size in GB'),
                 sg.Slider(
                     range=(10,500,5),
-                    default_value=self.cfg.cache.file_cache_size, 
+                    default_value=self.cfg.cache.file_cache_size,
                     key='file_cache_size',
                     size=(20,15),
                     orientation='horizontal',
@@ -156,11 +156,22 @@ class ConfigUI(object):
                 ),
                 sg.Button('Clean Cache')
                 #sg.InputText(
-                #    self.cfg.cache.file_cache_size, 
+                #    self.cfg.cache.file_cache_size,
                 #    key='file_cache_size',
                 #    size=(5,1),
                 #    metadata={'section':self.cfg.cache}
                 #),
+            ],
+            [
+                sg.Text('Saturation'),
+                sg.Slider(
+                    range=(0, 100, 5),
+                    default_value = self.cfg.coloring.saturation,
+                    key='saturation',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.coloring}
+                ),
             ],
             #[
             #    sg.Checkbox('Cleanup cache on start', key='clean_on_start',
@@ -185,7 +196,7 @@ class ConfigUI(object):
                 scenery.append([sg.Text(f"{latest.name} current version {r.local_rel.ver}")])
                 if version.parse(latest.ver) > version.parse(r.local_rel.ver):
                     pending_update = True
-        
+
             else:
                 scenery.append([sg.Text(f"{latest.name}")])
                 pending_update = True
@@ -229,7 +240,7 @@ class ConfigUI(object):
 
         self.running = True
         close = False
-        
+
         t = threading.Thread(target=self.scenery_setup)
         t.start()
 
@@ -310,12 +321,12 @@ class ConfigUI(object):
             self.scenery_dl = True
             t = threading.Thread(target=self.region_progress, args=(regionid,))
             t.start()
-            
+
             button = self.window[f"scenery-{regionid}"]
             try:
                 button.update("Working")
                 self.dl.download_dir = self.cfg.paths.download_dir
-               
+
                 region = self.dl.regions.get(regionid)
                 if not region.install_release():
                     print("Errors detected!")
@@ -325,7 +336,7 @@ class ConfigUI(object):
                     button.update("Retry?")
                     button.update(disabled=False)
                     continue
-                
+
                 button.update(visible=False)
                 updates = self.window[f"updates-{regionid}"]
                 updates.update("Updated!")
@@ -343,7 +354,7 @@ class ConfigUI(object):
                 self.scenery_dl = False
             t.join()
 
-    
+
     def region_progress(self, regionid):
         r = self.dl.regions.get(regionid)
         while self.scenery_dl:
@@ -364,10 +375,10 @@ class ConfigUI(object):
             metadata = self.window[k].metadata
             if not metadata:
                 continue
-            
+
             cfgsection = metadata.get('section')
             if cfgsection:
-                cfgsection.__dict__[k] = v 
+                cfgsection.__dict__[k] = v
         self.cfg.save()
         self.ready.set()
         self.refresh_scenery()

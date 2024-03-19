@@ -409,7 +409,8 @@ class Tile(object):
         else:
             use_ispc=False
 
-        self.saturation = float(CFG.coloring.saturation)
+        # in % in the CFG
+        self.saturation = 0.01 * float(CFG.coloring.saturation)
 
         self.dds = pydds.DDS(self.width*256, self.height*256, ispc=use_ispc,
                 dxt_format=CFG.pydds.format)
