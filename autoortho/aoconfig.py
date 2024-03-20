@@ -91,7 +91,7 @@ xplane_udp_port = 49000
 file_cache_size = 30
 
 [coloring]
-saturation = 1.0
+saturation = 100
 """
 
     def __init__(self, conf_file=None):
