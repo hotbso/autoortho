@@ -8,12 +8,13 @@ import platform
 import threading
 import gc
 
-from urllib.request import urlopen, Request
+#from urllib.request import urlopen, Request
 from queue import Queue, PriorityQueue, Empty
 from functools import wraps, lru_cache
 
 import pydds
 
+import requests
 import psutil
 from aoimage import AoImage
 
@@ -66,6 +67,7 @@ class Getter(object):
     queue = None
     workers = None
     WORKING = False
+    session = None
 
     def __init__(self, num_workers):
 
@@ -74,6 +76,13 @@ class Getter(object):
         self.workers = []
         self.WORKING = True
         self.localdata = threading.local()
+        self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections = int(CFG.autoortho.fetch_threads),
+            pool_maxsize = int(CFG.autoortho.fetch_threads)
+        )
+        self.session.mount('https://', adapter)
+        self.session.mount('http://', adapter)
 
         for i in range(num_workers):
             t = threading.Thread(target=self.worker, args=(i,), daemon=True)
@@ -135,10 +144,11 @@ class ChunkGetter(Getter):
             return True
 
         kwargs['idx'] = self.localdata.idx
+        kwargs['session'] = self.session
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
-chunk_getter = ChunkGetter(32)
+chunk_getter = ChunkGetter(int(CFG.autoortho.fetch_threads))
 
 log.info(f"chunk_getter: {chunk_getter}")
 
@@ -192,6 +202,7 @@ class Chunk(object):
 
     ready = None
     img = None
+    url = None
     deadline = 0
 
     serverlist=['a','b','c','d']
@@ -236,7 +247,7 @@ class Chunk(object):
         with open(self.cache_path, 'wb') as h:
             h.write(data)
 
-    def get(self, idx=0):
+    def get(self, idx=0, session=requests):
         #log.debug(f"Getting {self}")
 
         if self.get_cache():
@@ -264,14 +275,14 @@ class Chunk(object):
 
         MAPTYPES = {
             "EOX": f"https://{server}.s2maps-tiles.eu/wmts/?layer={MAPID}&style=default&tilematrixset={MATRIXSET}&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fjpeg&TileMatrix={self.zoom}&TileCol={self.col}&TileRow={self.row}",
-            "BI": f"http://r{server_num}.ortho.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=136",
-            #"GO2": f"http://khms{server_num}.google.com/kh/v=934?x={self.col}&y={self.row}&z={self.zoom}",
+            "BI": f"https://ecn.t{server_num}.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=13816",
+            "GO2": f"http://khms{server_num}.google.com/kh/v=934?x={self.col}&y={self.row}&z={self.zoom}",
             "ARC": f"http://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{self.zoom}/{self.row}/{self.col}",
             "NAIP": f"http://naip.maptiles.arcgis.com/arcgis/rest/services/NAIP/MapServer/tile/{self.zoom}/{self.row}/{self.col}",
             "USGS": f"https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{self.zoom}/{self.row}/{self.col}",
             "FIREFLY": f"https://fly.maptiles.arcgis.com/arcgis/rest/services/World_Imagery_Firefly/MapServer/tile/{self.zoom}/{self.row}/{self.col}"
-        }
-        url = MAPTYPES[self.maptype.upper()]
+       }
+        self.url = MAPTYPES[self.maptype.upper()]
         #log.debug(f"{self} getting {url}")
         header = {
                 "user-agent": "curl/7.68.0"
@@ -280,18 +291,19 @@ class Chunk(object):
         #time.sleep((self.attempt/10))
         self.attempt += 1
 
-        req = Request(url, headers=header)
         resp = 0
         data = None
         try:
-            resp = urlopen(req, timeout=max(1, remaining_time))
-            if resp.status != 200:
+            resp = session.get(self.url, timeout=max(1, remaining_time))
+            status_code = resp.status_code
+            #resp = urlopen(req, timeout=max(1, remaining_time))
+            if status_code != 200:
                 log.warning(f"Failed with status {resp.status} to get chunk {self} on server {server}.")
                 return False
-            data = resp.read()
+            data = resp.content
             if data[:3] != b'\xFF\xD8\xFF':
                 # FFD8FF identifies image as a JPEG
-                log.debug(f"Chunk {self} is not a JPEG! {data[:3]} URL: {url}")
+                log.debug(f"Chunk {self} is not a JPEG! {data[:3]} URL: {self.url}")
                 data = None
                 # FALLTHROUGH
         except Exception as err:
@@ -365,7 +377,6 @@ class Tile(object):
 
     # a global zoom out of everything
     global_zoom_out = 1
-    desaturate = 0.55
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)

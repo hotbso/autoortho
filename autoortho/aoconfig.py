@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import ast
 import pprint
 import configparser
 import platform
@@ -14,10 +15,14 @@ class SectionParser(object):
 
     def __init__(self, /, **kwargs):
         for k,v in kwargs.items():
+            # Detect booleans
             if v.lower() in self.true:
                 v = True
             elif v.lower() in self.false:
                 v = False
+            # Detect list
+            elif v.startswith('[') and v.endswith(']'):
+                v = ast.literal_eval(v)
 
             self.__dict__.update({k:v})
 
@@ -47,7 +52,9 @@ hide = True
 debug = False
 
 [paths]
-# X-Plane Custom Scenery path
+# X-Plane install path
+xplane_path = 
+# Scenery install path (X-Plane Custom Scenery or other.)
 scenery_path =
 # Directory where satellite images are cached
 cache_dir = {os.path.join(os.path.expanduser("~"), ".autoortho-data", "cache")}
@@ -65,6 +72,8 @@ min_zoom = 12
 # stutters.  Lower numbers will be more responsive at the expense of
 # ocassional low quality tiles.
 maxwait = 0.5
+maptypes = ['Null', 'BI', 'NAIP', 'EOX', 'USGS', 'Firefly']
+fetch_threads = 32 
 
 [pydds]
 # ISPC or STB for dds file compression
@@ -89,6 +98,9 @@ xplane_udp_port = 49000
 [cache]
 # Max size of the image disk cache in GB. Minimum of 10GB
 file_cache_size = 30
+
+[windows]
+prefer_winfsp = False
 
 [coloring]
 saturation = 100
@@ -133,7 +145,12 @@ saturation = 100
                 "z_autoortho",
                 "scenery"
         )
-       
+      
+        self.xplane_custom_scenery_path = os.path.abspath(os.path.join(
+                self.paths.xplane_path,
+                "Custom Scenery"
+        ))
+
         sceneries = []
         if os.path.exists(self.ao_scenery_path):
             sceneries = os.listdir(self.ao_scenery_path)
@@ -141,7 +158,7 @@ saturation = 100
 
         self.scenery_mounts = [{
             "root":os.path.join(self.ao_scenery_path, s),
-            "mount":os.path.join(self.paths.scenery_path, s)
+            "mount":os.path.join(self.xplane_custom_scenery_path, s)
         } for s in sceneries]
         print(self.scenery_mounts)
 
@@ -150,14 +167,6 @@ saturation = 100
             log.info(f"Creating dir {self.ao_scenery_path}")
             os.makedirs(self.ao_scenery_path)
         return
-
-        self.z_autoortho_path = os.path.join(self.paths.scenery_path, 'z_autoortho')
-        self.root = os.path.join(self.z_autoortho_path, '_textures')
-        self.mountpoint = os.path.join(self.z_autoortho_path, 'textures')
-        
-        if not os.path.exists(self.z_autoortho_path):
-            log.info(f"Creating dir {self.z_autoortho_path}")
-            os.makedirs(self.z_autoortho_path)
 
 
     def save(self):

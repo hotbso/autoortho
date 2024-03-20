@@ -36,7 +36,7 @@ def replay():
                 #
                 #print(f"read {key} {offs} {length}")
                 ot = opened_tiles[key]
-                buf = ot.tile.read_dds_bytes(offs, length)
+                buf = ot.read(offs, length)
                 # lb = len(buf)
                 # if lb != length:
                     # print(f"size mismatch {lb} {length}!")
