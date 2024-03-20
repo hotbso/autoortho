@@ -944,19 +944,16 @@ class OpenTile_Ctx:
         return self.tile.read_dds_bytes(offset, length, self)
 
 class TileCacher(object):
-    tiles = {}
-
-    hits = 0
-    misses = 0
-
     cache_mem_lim = pow(2,30) * 2
     cache_tile_lim = 100
-
-    open_count = {}
 
     def __init__(self, cache_dir='.cache'):
         if MEMTRACE:
             tracemalloc.start()
+        self.tiles = {}
+        self.open_count = {}
+        self.hits = 0
+        self.misses = 0
 
         self.maptype_override = CFG.autoortho.maptype_override
         if self.maptype_override:
@@ -984,13 +981,10 @@ class TileCacher(object):
         process = psutil.Process(os.getpid())
 
         while True:
-            gc.collect(1)   # run garbage collector before judging bss
-            time.sleep(1)   # collect is asynchronous, or?
-            cur_mem = process.memory_info().rss
-            rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
-            log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
-            log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
-
+            time.sleep(15)
+            if len(self.tiles) == 0:
+                continue       # don't do for an idle cache
+ 
             # sweep over tiles and run bg work
 
             # as that writes back jpegs it can be lengthy and we don't do that under
@@ -1005,6 +999,13 @@ class TileCacher(object):
                 t.execute_bg_work()
 
             del(bg_q)
+
+            gc.collect(1)   # run garbage collector before judging bss
+            time.sleep(1)   # collect is asynchronous, or?
+            cur_mem = process.memory_info().rss
+            rate = (self.hits * 100 ) // (1 + self.misses + self.hits)
+            log.info(f"TILE CACHE:  MISS: {self.misses}  HIT: {self.hits} RATE: {rate}%")
+            log.info(f"NUM OPEN TILES: {len(self.tiles)}.  TOTAL MEM: {cur_mem//1048576} MB")
 
             while len(self.tiles) >= self.cache_tile_lim and cur_mem > self.cache_mem_lim:
                 log.debug("Hit cache limit.  Remove oldest 20")
@@ -1028,7 +1029,6 @@ class TileCacher(object):
 
                 cur_mem = process.memory_info().rss
 
-
             if MEMTRACE:
                 snapshot = tracemalloc.take_snapshot()
                 top_stats = snapshot.statistics('lineno')
@@ -1036,9 +1036,6 @@ class TileCacher(object):
                 log.info("[ Top 10 ]")
                 for stat in top_stats[:10]:
                         log.info(stat)
-
-            time.sleep(15)
-
 
     def _open_tile(self, row, col, map_type, zoom):
         if self.maptype_override:
