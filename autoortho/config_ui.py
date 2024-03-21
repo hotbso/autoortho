@@ -25,9 +25,8 @@ from version import __version__
 
 CUR_PATH = os.path.dirname(os.path.realpath(__file__))
 
-
 class ConfigUI(object):
-
+   
     status = None
     warnings = []
     errors = []
@@ -35,10 +34,13 @@ class ConfigUI(object):
     window = None
     running = False
     ready = None
+    splash_w = None
 
     def __init__(self, cfg):
         self.ready = threading.Event()
         self.ready.clear()
+        
+        self.start_splash()
 
         self.cfg = cfg
         self.dl = downloader.OrthoManager(
@@ -57,7 +59,18 @@ class ConfigUI(object):
         else:
             self.icon_path =os.path.join(CUR_PATH, 'imgs', 'ao-icon.png')
 
-    def setup(self, headless=False):
+    def start_splash(self):
+        splash_path = os.path.join(CUR_PATH, 'imgs', 'splash.png')
+        self.splash_w = sg.Window(
+                'Window Title', [[sg.Image(splash_path, subsample=2)]], 
+                transparent_color=sg.theme_background_color(), no_titlebar=True,
+                keep_on_top=True, finalize=True
+        )
+        event, values = self.splash_w.read(timeout=100)
+        return
+
+
+    def setup(self):
         scenery_path = self.cfg.paths.scenery_path
         showconfig = self.cfg.general.showconfig
         maptype = self.cfg.autoortho.maptype_override
@@ -65,21 +78,8 @@ class ConfigUI(object):
         if not os.path.exists(self.cfg.paths.cache_dir):
             os.makedirs(self.cfg.paths.cache_dir)
 
-        if not headless:
-            self.ui_loop()
-        else:
+        self.ui_loop()
 
-            log.info("-"*28)
-            log.info(f"Running setup!")
-            log.info("-"*28)
-            scenery_path = input(f"Enter path to X-Plane 11 custom_scenery directory ({scenery_path}) : ") or scenery_path
-
-            self.config['paths']['scenery_path'] = scenery_path
-            self.config['general']['showconfig'] = str(showconfig)
-            self.config['autoortho']['maptype_override'] = maptype
-
-            self.save()
-            self.load()
 
     def refresh_scenery(self):
         self.dl.regions = {}
@@ -93,14 +93,17 @@ class ConfigUI(object):
 
     def ui_loop(self):
         # Main GUI loop
-
+       
         scenery_path = self.cfg.paths.scenery_path
         showconfig = self.cfg.general.showconfig
         maptype = self.cfg.autoortho.maptype_override
-        maptypes = ['', 'BI', 'NAIP', 'Arc', 'EOX', 'USGS', 'Firefly']
+        maptypes = ['', 'BI', 'NAIP', 'EOX', 'USGS', 'Firefly'] 
 
         sg.theme('DarkAmber')
 
+        #
+        # Setup/config tab
+        #
         setup = [
             [
                 #sg.Column(
@@ -111,14 +114,20 @@ class ConfigUI(object):
                 #),
                 sg.Image(os.path.join(CUR_PATH, 'imgs', 'banner1.png'), subsample=2),
             ],
-            #[sg.Text(f'ver: {__version__}')],
+            #[sg.Text(f'ver: {__version__}')], 
             #[sg.Image(os.path.join(CUR_PATH, 'imgs', 'flight1.png'), subsample=3)],
             [sg.HorizontalSeparator(pad=5)],
             [
-                sg.Text('X-Plane scenery dir:', size=(18,1)),
+                sg.Text('Scenery install dir:', size=(18,1)), 
                 sg.InputText(scenery_path, size=(45,1), key='scenery_path',
-                    metadata={'section':self.cfg.paths}),
+                    metadata={'section':self.cfg.paths}), 
                 sg.FolderBrowse(key="scenery_b", target='scenery_path', initial_folder=scenery_path)
+            ],
+            [
+                sg.Text('X-Plane install dir:', size=(18,1)), 
+                sg.InputText(self.cfg.paths.xplane_path, size=(45,1), key='xplane_path',
+                    metadata={'section':self.cfg.paths}), 
+                sg.FolderBrowse(key="xplane_b", target='xplane_path', initial_folder=self.cfg.paths.xplane_path)
             ],
             [
                 sg.Text('Image cache dir:', size=(18,1)),
@@ -148,7 +157,7 @@ class ConfigUI(object):
                 sg.Text('Cache size in GB'),
                 sg.Slider(
                     range=(10,500,5),
-                    default_value=self.cfg.cache.file_cache_size,
+                    default_value=self.cfg.cache.file_cache_size, 
                     key='file_cache_size',
                     size=(20,15),
                     orientation='horizontal',
@@ -156,7 +165,7 @@ class ConfigUI(object):
                 ),
                 sg.Button('Clean Cache')
                 #sg.InputText(
-                #    self.cfg.cache.file_cache_size,
+                #    self.cfg.cache.file_cache_size, 
                 #    key='file_cache_size',
                 #    size=(5,1),
                 #    metadata={'section':self.cfg.cache}
@@ -183,6 +192,9 @@ class ConfigUI(object):
 
         ]
 
+        #
+        # Setup scenery tab
+        #
         scenery = [
         ]
         self.dl.find_regions()
@@ -196,7 +208,7 @@ class ConfigUI(object):
                 scenery.append([sg.Text(f"{latest.name} current version {r.local_rel.ver}")])
                 if version.parse(latest.ver) > version.parse(r.local_rel.ver):
                     pending_update = True
-
+        
             else:
                 scenery.append([sg.Text(f"{latest.name}")])
                 pending_update = True
@@ -214,13 +226,32 @@ class ConfigUI(object):
         #scenery.append([sg.Text(key='-EXPAND-', font='ANY 1', pad=(0,0))])
         #scenery.append([sg.StatusBar("...", size=(74,3), key="status", auto_size_text=True, expand_x=True)])
 
+        #
+        # Console logs tab
+        #
         logs = [
+            [sg.Multiline(
+                "",
+                key="log",
+                size=(80,20),
+                autoscroll=True,
+                reroute_stdout=True,
+                reroute_stderr=True,
+                #echo_stdout_stderr=True,
+                expand_x=True,
+                expand_y=True
+                )
+            ]
         ]
 
         scenery_column = sg.Column(scenery, expand_x=True, expand_y=True, scrollable=True, vertical_scroll_only=True)
         layout = [
             [sg.TabGroup(
-                [[sg.Tab('Setup', setup), sg.Tab('Scenery', [[scenery_column]])]])
+                [[
+                    sg.Tab('Setup', setup), 
+                    sg.Tab('Scenery', [[scenery_column]]),
+                    sg.Tab('Logs', logs)
+                ]])
             ],
             [sg.Text(key='-EXPAND-', font='ANY 1', pad=(0,0))],
             [sg.StatusBar("...", size=(74,3), key="status", auto_size_text=True, expand_x=True)],
@@ -237,81 +268,106 @@ class ConfigUI(object):
         #print = lambda *args, **kwargs: window['output'].print(*args, **kwargs)
         self.window['-EXPAND-'].expand(True, True, True)
         self.status = self.window['status']
-
+        self.log = self.window['log']
+        
         self.running = True
         close = False
 
-        t = threading.Thread(target=self.scenery_setup)
-        t.start()
+        scenery_t = threading.Thread(target=self.scenery_setup)
+        scenery_t.start()
 
+        if self.splash_w is not None:
+            # GUI starting, close splash screen
+            self.splash_w.close()
+        
         self.ready.set()
 
-        while self.running:
-            event, values = self.window.read(timeout=100)
-            #log.info(f'VALUES: {values}')
-            #print(f"VALUES {values}")
-            #print(f"EVENT: {event}")
-            if event == sg.WIN_CLOSED:
-                print("Not saving changes ...")
-                close = True
-                break
-            elif event == 'Quit':
-                print("Quiting ...")
-                close = True
-                break
-            elif event == "Run":
-                print("Updating config.")
-                self.save()
-                self.cfg.load()
-                break
-            elif event == 'Save':
-                print("Updating config.")
-                self.save()
-                self.cfg.load()
-                print(self.cfg.paths)
-            elif event == 'Clean Cache':
-                cbutton = self.window["Clean Cache"]
-                rbutton = self.window["Run"]
-                cbutton.update("Working")
-                cbutton.update(disabled=True)
-                rbutton.update(disabled=True)
+        try:
+            while self.running:
+                event, values = self.window.read(timeout=1000)
+                #log.info(f'VALUES: {values}')
+                #print(f"VALUES {values}")
+                #print(f"EVENT: {event}")
+                if event == sg.WIN_CLOSED:
+                    print("Exiting ...")
+                    #print("Not saving changes ...")
+                    #self.show_status("Exiting")
+                    close = True
+                    self.running = False
+                elif event == 'Quit':
+                    self.show_status("Quiting")
+                    print("Quiting ...")
+                    close = True
+                    self.running = False
+                    self.show_status("Quiting")
+                elif event == "Run":
+                    print("Updating config.")
+                    self.show_status("Updating config")
+                    self.save()
+                    self.cfg.load()
+                    self.show_status("Mounting sceneries")
+                    self.mount_sceneries(blocking=False)
+                    self.show_status("Verifying")
+                    self.verify()
+                    self.show_status("Running")
+                    self.window.minimize()
+                elif event == 'Save':
+                    print("Updating config.")
+                    self.show_status("Updating config")
+                    self.save()
+                    self.cfg.load()
+                    print(self.cfg.paths)
+                elif event == 'Clean Cache':
+                    self.show_status("Cleaning cache")
+                    cbutton = self.window["Clean Cache"]
+                    rbutton = self.window["Run"]
+                    cbutton.update("Working")
+                    cbutton.update(disabled=True)
+                    rbutton.update(disabled=True)
+                    self.window.refresh()
+                    self.clean_cache(
+                        self.cfg.paths.cache_dir,
+                        int(float(self.cfg.cache.file_cache_size))
+                    )
+                    sg.popup("Done cleaning cache!")
+                    cbutton.update("Clean Cache")
+                    cbutton.update(disabled=False)
+                    rbutton.update(disabled=False)
+                elif event.startswith("scenery-"):
+                    self.save()
+                    self.cfg.load()
+                    button = self.window[event]
+                    button.update(disabled=True)
+                    regionid = event.split("-")[1]
+                    self.scenery_q.put(regionid)
+                elif self.show_errs:
+                    font = ("Helventica", 14)
+                    sg.popup("\n".join(self.show_errs), title="ERROR!", font=font)
+                    self.show_errs.clear()
+
+                self.update_logs()
                 self.window.refresh()
-                self.clean_cache(
-                    self.cfg.paths.cache_dir,
-                    int(float(self.cfg.cache.file_cache_size))
-                )
-                sg.popup("Done cleaning cache!")
-                cbutton.update("Clean Cache")
-                cbutton.update(disabled=False)
-                rbutton.update(disabled=False)
-            elif event.startswith("scenery-"):
-                self.save()
-                self.cfg.load()
-                button = self.window[event]
-                button.update(disabled=True)
-                regionid = event.split("-")[1]
-                self.scenery_q.put(regionid)
-            elif self.show_errs:
-                font = ("Helventica", 14)
-                sg.popup("\n".join(self.show_errs), title="ERROR!", font=font)
-                self.show_errs.clear()
+        finally:
+            log.info("GUI exiting...")
+            self.stop()
+            log.info("Join scenery thread")
+            scenery_t.join()
+            log.info("Exiting UI")
 
-            self.window.refresh()
-
-        print("Exiting ...")
-        self.running = False
-        t.join()
-        self.window.close()
-
-        if close:
-            sys.exit(0)
 
     def stop(self):
         self.running = False
+        self.unmount_sceneries()
         self.window.close()
 
-    def scenery_setup(self):
 
+    def update_logs(self):
+        with open(self.cfg.paths.log_file) as h:
+            lines = h.readlines()[-25:]
+        self.log.update(''.join(lines))
+
+
+    def scenery_setup(self):
         while self.running:
             try:
                 regionid = self.scenery_q.get(timeout=2)
@@ -321,12 +377,12 @@ class ConfigUI(object):
             self.scenery_dl = True
             t = threading.Thread(target=self.region_progress, args=(regionid,))
             t.start()
-
+            
             button = self.window[f"scenery-{regionid}"]
             try:
                 button.update("Working")
                 self.dl.download_dir = self.cfg.paths.download_dir
-
+               
                 region = self.dl.regions.get(regionid)
                 if not region.install_release():
                     print("Errors detected!")
@@ -336,7 +392,7 @@ class ConfigUI(object):
                     button.update("Retry?")
                     button.update(disabled=False)
                     continue
-
+                
                 button.update(visible=False)
                 updates = self.window[f"updates-{regionid}"]
                 updates.update("Updated!")
@@ -354,7 +410,7 @@ class ConfigUI(object):
                 self.scenery_dl = False
             t.join()
 
-
+    
     def region_progress(self, regionid):
         r = self.dl.regions.get(regionid)
         while self.scenery_dl:
@@ -375,10 +431,10 @@ class ConfigUI(object):
             metadata = self.window[k].metadata
             if not metadata:
                 continue
-
+            
             cfgsection = metadata.get('section')
             if cfgsection:
-                cfgsection.__dict__[k] = v
+                cfgsection.__dict__[k] = v 
         self.cfg.save()
         self.ready.set()
         self.refresh_scenery()
@@ -386,7 +442,12 @@ class ConfigUI(object):
 
 
     def verify(self):
-        self._check_xplane_dir(self.cfg.paths.scenery_path)
+        self._check_xplane_dir(self.cfg.paths.xplane_path)
+        for scenery in self.cfg.scenery_mounts:
+            self._check_ortho_dir(scenery.get('root'))
+
+        if not self.cfg.scenery_mounts:
+            self.errors.append(f"No installed scenery detcted!")
 
         msg = []
         if self.warnings:
@@ -420,6 +481,7 @@ class ConfigUI(object):
         log.info(msg)
         self.status.update(msg)
         self.window.refresh()
+
 
     def clean_cache(self, cache_dir, size_gb):
 
@@ -457,6 +519,7 @@ class ConfigUI(object):
 
         self.status.update(f"Cache cleanup done.")
 
+
     def _check_ortho_dir(self, path):
         ret = True
 
@@ -466,14 +529,15 @@ class ConfigUI(object):
 
         return ret
 
+
     def _check_xplane_dir(self, path):
-        ret = True
 
-        if os.path.basename(path) != "Custom Scenery":
-            self.warnings.append(f"XPlane Custom Scenery directory {path} seems wrong.  This may cause issues.")
-            ret = False
+        if not os.path.isdir(path):
+            self.errors.append(f"XPlane install directory '{path}' is not a directory.")
+            return False
 
-        return ret
+        if not "Custom Scenery" in os.listdir(path):
+            self.errors.append(f"XPlane install directory '{path}' seems wrong.")
+            return False
 
-
-
+        return True
