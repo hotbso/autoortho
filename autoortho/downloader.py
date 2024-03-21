@@ -21,12 +21,7 @@ from packaging import version
 from aoconfig import CFG
 
 import logging
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 log = logging.getLogger(__name__)
-
-if not log:
-    print("NO LOG")
-print(log)
 
 TESTMODE=os.environ.get('AO_TESTMODE', False)
 
@@ -229,7 +224,8 @@ class Package(object):
         MBps = (total_fetched/1048576) / elapsed
         cur_activity['pcnt_done'] = pcnt_done
         cur_activity['MBps'] = MBps
-        print(f"\r{pcnt_done:.2f}%   {MBps:.2f} MBps", end='')
+        if block_num % 1000 == 0:
+            print(f"\r{pcnt_done:.2f}%   {MBps:.2f} MBps", end='')
         cur_activity['status'] = f"Downloading {self.dl_url}\n{pcnt_done:.2f}%   {MBps:.2f} MBps"
 
     def check(self):
@@ -720,6 +716,7 @@ class OrthoManager(object):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
     parser = argparse.ArgumentParser(
         description = "AutoOrtho Scenery Downloader"
