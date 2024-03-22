@@ -947,7 +947,7 @@ class TileCacher(object):
     cache_mem_lim = pow(2,30) * 2
     cache_tile_lim = 100
 
-    def __init__(self, cache_dir='.cache'):
+    def __init__(self, cache_dir = None):
         if MEMTRACE:
             tracemalloc.start()
         self.tiles = {}
@@ -984,7 +984,7 @@ class TileCacher(object):
             time.sleep(15)
             if len(self.tiles) == 0:
                 continue       # don't do for an idle cache
- 
+
             # sweep over tiles and run bg work
 
             # as that writes back jpegs it can be lengthy and we don't do that under
