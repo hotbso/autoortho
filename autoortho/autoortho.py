@@ -279,6 +279,7 @@ class AOMount:
 class AOMountUI(config_ui.ConfigUI, AOMount):
     def __init__(self, *args, **kwargs):
         self.mount_threads = []
+        self.tc = getortho.TileCacher() # the joy of multiple inheritence in Python
         super().__init__(*args, **kwargs)
 
 

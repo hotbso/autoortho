@@ -104,6 +104,9 @@ prefer_winfsp = False
 
 [coloring]
 saturation = 100
+
+[global_zoom_out]
+steps = 0
 """
 
     def __init__(self, conf_file=None):

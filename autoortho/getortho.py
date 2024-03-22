@@ -375,9 +375,6 @@ class Tile(object):
 
     first_open = True
 
-    # a global zoom out of everything
-    global_zoom_out = 1
-
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
         self.col = int(col)
@@ -422,6 +419,9 @@ class Tile(object):
 
         # in % in the CFG
         self.saturation = 0.01 * float(CFG.coloring.saturation)
+
+        # a global zoom out of everything
+        self.global_zoom_out = int(float(CFG.global_zoom_out.steps))
 
         self.dds = pydds.DDS(self.width*256, self.height*256, ispc=use_ispc,
                 dxt_format=CFG.pydds.format)

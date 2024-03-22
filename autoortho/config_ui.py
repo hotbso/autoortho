@@ -182,6 +182,17 @@ class ConfigUI(object):
                     metadata={'section':self.cfg.coloring}
                 ),
             ],
+            [
+                sg.Text('Global Zoom Out'),
+                sg.Slider(
+                    range=(0, 2, 1),
+                    default_value = self.cfg.global_zoom_out.steps,
+                    key='steps',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.global_zoom_out}
+                ),
+            ],
             #[
             #    sg.Checkbox('Cleanup cache on start', key='clean_on_start',
             #        default=self.cfg.cache.clean_on_start,
