@@ -105,6 +105,12 @@ prefer_winfsp = False
 [coloring]
 saturation = 100
 
+[seasons]
+spr_saturation = 70.0
+sum_saturation = 100.0
+fal_saturation = 80.0
+win_saturation = 55.0
+
 [global_zoom_out]
 steps = 0
 """

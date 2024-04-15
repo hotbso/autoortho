@@ -20,7 +20,9 @@ from aoimage import AoImage
 
 from aoconfig import CFG
 from aostats import STATS, StatTracker, inc_stat
+import aoseasons
 
+ao_season = None
 MEMTRACE = False
 
 import logging
@@ -417,9 +419,6 @@ class Tile(object):
         else:
             use_ispc=False
 
-        # in % in the CFG
-        self.saturation = 0.01 * float(CFG.coloring.saturation)
-
         # a global zoom out of everything
         self.global_zoom_out = int(float(CFG.global_zoom_out.steps))
 
@@ -636,8 +635,9 @@ class Tile(object):
         if im is None:
             return None
 
-        if self.saturation < 1.0:
-            im = im.copy().desaturate(self.saturation)
+        saturation = 0.01 * ao_season.saturation(self.row, self.col, self.zoom)
+        if saturation < 1.0:
+            im = im.copy().desaturate(saturation)
 
         return im
 
@@ -969,6 +969,10 @@ class TileCacher(object):
 
         self.bg_processing_t = threading.Thread(target=self.bg_processing, daemon=True)
         self.bg_processing_t.start()
+
+        global ao_season
+        if ao_season is None:
+            ao_season = aoseasons.AoSeasonCache(self.cache_dir)
 
     def _to_tile_id(self, row, col, map_type, zoom):
         if self.maptype_override:
