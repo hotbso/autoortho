@@ -22,7 +22,7 @@ from aoconfig import CFG
 from aostats import STATS, StatTracker, inc_stat
 import aoseasons
 
-ao_season = None
+ao_seasons = None
 MEMTRACE = False
 
 import logging
@@ -638,7 +638,7 @@ class Tile(object):
             return None
 
         if self.seasons_enabled:
-            saturation = 0.01 * ao_season.saturation(self.row, self.col, self.zoom)
+            saturation = 0.01 * ao_seasons.saturation(self.row, self.col, self.zoom)
             if saturation < 1.0:    # desaturation is expensive
                 im = im.copy().desaturate(saturation)
 
@@ -973,9 +973,9 @@ class TileCacher(object):
         self.bg_processing_t = threading.Thread(target=self.bg_processing, daemon=True)
         self.bg_processing_t.start()
 
-        global ao_season
-        if ao_season is None:
-            ao_season = aoseasons.AoSeasonCache(self.cache_dir)
+        global ao_seasons
+        if ao_seasons is None:
+            ao_seasons = aoseasons.AoSeasonCache(self.cache_dir)
 
     def _to_tile_id(self, row, col, map_type, zoom):
         if self.maptype_override:

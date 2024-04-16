@@ -244,7 +244,7 @@ class AoSeasonCache():
 
     def _show_stats(self):
         log.info(f"AoSeasonCache stats: {self._get_dsf.cache_info()}")
-        
+
 if __name__ == "__main__":
     from aoconfig import AOConfig
     aoc = AOConfig()

@@ -103,7 +103,7 @@ file_cache_size = 30
 prefer_winfsp = False
 
 [seasons]
-enabled = True
+enabled = False
 spr_saturation = 70.0
 sum_saturation = 100.0
 fal_saturation = 80.0
