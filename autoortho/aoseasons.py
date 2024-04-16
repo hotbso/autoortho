@@ -1,20 +1,21 @@
-import struct, re, os, math, time, datetime, threading
+import struct, re, os, math, time, datetime, atexit
 import py7zr
 
 from aoconfig import CFG
 from aostats import STATS, StatTracker, inc_stat
+from functools import lru_cache
+
+import logging
+log = logging.getLogger(__name__)
 
 class AoDsfSeason():
     invalid = True      # assume invalid, e.g uninstalled scenery
-    last_access = 0     # last access time
 
     def __init__(self, lat, lon, cache_dir):
+        #print(f"__init__ {lat} {lon}")
         self.demn = []
         self.demi = []
         self.dmed = []
-
-        lat = math.floor(lat)
-        lon = math.floor(lon)
 
         lat_10 = math.floor(lat / 10) * 10
         lon_10 = math.floor(lon / 10 ) * 10
@@ -129,101 +130,99 @@ class AoDsfSeason():
 class AoSeasonCache():
 
     def __init__(self, cache_dir):
-        self.lock = threading.RLock()
         self.cache_dir = cache_dir
-        self.cache = {}
-        self.cfg_saturation = [float(CFG.seasons.spr_saturation), float(CFG.seasons.sum_saturation), 
+        self.cfg_saturation = [float(CFG.seasons.spr_saturation), float(CFG.seasons.sum_saturation),
                                float(CFG.seasons.fal_saturation), float(CFG.seasons.win_saturation) ]
+        atexit.register(self._show_stats)
+
+    # plane flies in a 4x3 dsf box and dsf covers >= 100km x 50km
+    # so 60 is plenty
+    @lru_cache(maxsize = 60)
+    def _get_dsf(self, lat, lon):
+        return AoDsfSeason(lat, lon, self.cache_dir)
 
     def _season_info_ll(self, lat, lon, day = None):
         """ return a weight vector for day in  [spr, sum, fal, win] """
-        lat_ = math.floor(lat)
-        lon_ = math.floor(lon)
-        lat_frac = lat - lat_
-        lon_frac = lon - lon_
+        lat_i = math.floor(lat)
+        lon_i = math.floor(lon)
+        lat_frac = lat - lat_i
+        lon_frac = lon - lon_i
         if lat_frac < 0.0:
             lat_frac = 1.0 + lat_frac
 
         if lon_frac < 0.0:
             lon_frac = 1.0 + lon_frac
 
-        key = (lat_, lon_)
 
-        with self.lock:
-            dsf = self.cache.get(key)
-            if dsf is None:
-                dsf = AoDsfSeason(lat, lon, self.cache_dir)
-                self.cache[key] = dsf
+        dsf = self._get_dsf(lat_i, lon_i)
 
-            if dsf.invalid:
-                return [0.0, 1.0, 0.0, 0.0] # eternal summer
+        if dsf.invalid:
+            return [0.0, 1.0, 0.0, 0.0] # eternal summer
 
-            dsf.last_access = time.time()
+        season_days = []
+        for si in range(0, 8):
+            dmed = dsf.dmed[si]
+            demi = dsf.demi[si]
+            ncol = demi[3]
+            nrow = demi[4]
+            scale = demi[5]
+            row = math.floor(lat_frac * nrow)
+            col = math.floor(lon_frac * ncol)
+            d = math.floor(dmed[row * ncol + col] * scale)
+            #print(f"{dsf.demn[si]}, {d}")
+            season_days.append(d)
 
-            season_days = []
-            for si in range(0, 8):
-                dmed = dsf.dmed[si]
-                demi = dsf.demi[si]
-                ncol = demi[3]
-                nrow = demi[4]
-                scale = demi[5]
-                row = math.floor(lat_frac * nrow)
-                col = math.floor(lon_frac * ncol)
-                d = math.floor(dmed[row * ncol + col] * scale)
-                #print(f"{dsf.demn[si]}, {d}")
-                season_days.append(d)
+        if season_days[0] == 0 and season_days[1] == 0:   # seems to be the equitoral region
+            return [0.0, 1.0, 0.0, 0.0]
 
-            if season_days[0] == 0 and season_days[1] == 0:   # seems to be the equitoral region
-                return [0.0, 1.0, 0.0, 0.0]
+        season_days.append(season_days[0])
+        #print(season_days)
 
-            season_days.append(season_days[0])
-            #print(season_days)
+        if day is None:
+            day = datetime.date.today().timetuple().tm_yday
+        #print(f"day: {day}")
 
-            if day is None:
-                day = datetime.date.today().timetuple().tm_yday
-            #print(f"day: {day}")
+        weights= [0.0] * 4
 
-            weights= [0.0] * 4
-
-            # full season
-            for i in range(0, 4):
-                s = season_days[2 * i]
-                e = season_days[2 * i + 1]
-                if ((s <= day and day < e) or               # nowrap
-                    (e < s and (s <= day or day < e))):     # wrap
-                    weights[i] = 1.0
-                    return weights
-
-            # interpolate between seasons
-            i = 0
-            while i < 4:
-                s = season_days[2 * i + 1]
-                e = season_days[2 * i + 2]
-                if s <= day and day < e:                    # nowrap
-                    d = e - s
-                    weights[i] = 1.0 - (day - s) / d
-                    break
-
-                if (e < s):                                     # wrap
-                    d = (365 - s) + e
-                    if s <= day:
-                        weights[i] = 1.0 - (day - s) / d
-                        break
-                    if day < e:
-                        weights[i] = 1.0 - (day + (365 - s)) / d
-                        break
-
-                i = i + 1
-
-            if i < 4:
-                if i == 3:
-                    weights[0] = 1.0 - weights[3]
-                else:
-                    weights[i + 1] = 1.0 - weights[i]
+        # full season
+        for i in range(0, 4):
+            s = season_days[2 * i]
+            e = season_days[2 * i + 1]
+            if ((s <= day and day < e) or               # nowrap
+                (e < s and (s <= day or day < e))):     # wrap
+                weights[i] = 1.0
                 return weights
 
-            log.warning(f"Oh no, cold not match {day} to {season_days}")
-            return [0.0, 1.0, 0.0, 0.0]
+        # interpolate between seasons
+        i = 0
+        while i < 4:
+            s = season_days[2 * i + 1]
+            e = season_days[2 * i + 2]
+            if s <= day and day < e:                    # nowrap
+                d = e - s
+                weights[i] = 1.0 - (day - s) / d
+                break
+
+            if (e < s):                                     # wrap
+                d = (365 - s) + e
+                if s <= day:
+                    weights[i] = 1.0 - (day - s) / d
+                    break
+                if day < e:
+                    weights[i] = 1.0 - (day + (365 - s)) / d
+                    break
+
+            i = i + 1
+
+        if i < 4:
+            if i == 3:
+                weights[0] = 1.0 - weights[3]
+            else:
+                weights[i + 1] = 1.0 - weights[i]
+            return weights
+
+        log.warning(f"Oh no, could not match {day} to {season_days}")
+        return [0.0, 1.0, 0.0, 0.0]
 
     def _season_info_rc(self, row, col, zoom, day = None):
         """ return a weight vector for day in  [spr, sum, fal, win] """
@@ -242,6 +241,9 @@ class AoSeasonCache():
             saturation += weights[i] * self.cfg_saturation[i]
 
         return saturation
+
+    def _show_stats(self):
+        log.info(f"AoSeasonCache stats: {self._get_dsf.cache_info()}")
         
 if __name__ == "__main__":
     from aoconfig import AOConfig
@@ -253,6 +255,8 @@ if __name__ == "__main__":
     while True:
         if True:
             line = input("lat lon day> ")
+            if line == "":
+                break
             lat, lon, day = line.split()
             lat = float(lat)
             lon = float(lon)
@@ -274,3 +278,4 @@ if __name__ == "__main__":
             print(weights)
             saturation = ao_season.saturation(row, col, zoom, day)
             print(saturation)
+
