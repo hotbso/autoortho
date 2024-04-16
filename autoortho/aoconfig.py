@@ -102,10 +102,8 @@ file_cache_size = 30
 [windows]
 prefer_winfsp = False
 
-[coloring]
-saturation = 100
-
 [seasons]
+enabled = True
 spr_saturation = 70.0
 sum_saturation = 100.0
 fal_saturation = 80.0

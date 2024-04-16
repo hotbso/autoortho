@@ -427,6 +427,8 @@ class Tile(object):
         self.id = f"{row}_{col}_{maptype}_{zoom}"
         self.bg_work = []
 
+        self.seasons_enabled = CFG.seasons.enabled
+
     def __lt__(self, other):
         return self.priority < other.priority
 
@@ -635,9 +637,10 @@ class Tile(object):
         if im is None:
             return None
 
-        saturation = 0.01 * ao_season.saturation(self.row, self.col, self.zoom)
-        if saturation < 1.0:
-            im = im.copy().desaturate(saturation)
+        if self.seasons_enabled:
+            saturation = 0.01 * ao_season.saturation(self.row, self.col, self.zoom)
+            if saturation < 1.0:    # desaturation is expensive
+                im = im.copy().desaturate(saturation)
 
         return im
 
