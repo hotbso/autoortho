@@ -26,7 +26,7 @@ from version import __version__
 CUR_PATH = os.path.dirname(os.path.realpath(__file__))
 
 class ConfigUI(object):
-   
+
     status = None
     warnings = []
     errors = []
@@ -39,7 +39,7 @@ class ConfigUI(object):
     def __init__(self, cfg):
         self.ready = threading.Event()
         self.ready.clear()
-        
+
         self.start_splash()
 
         self.cfg = cfg
@@ -62,7 +62,7 @@ class ConfigUI(object):
     def start_splash(self):
         splash_path = os.path.join(CUR_PATH, 'imgs', 'splash.png')
         self.splash_w = sg.Window(
-                'Window Title', [[sg.Image(splash_path, subsample=2)]], 
+                'Window Title', [[sg.Image(splash_path, subsample=2)]],
                 transparent_color=sg.theme_background_color(), no_titlebar=True,
                 keep_on_top=True, finalize=True
         )
@@ -93,11 +93,11 @@ class ConfigUI(object):
 
     def ui_loop(self):
         # Main GUI loop
-       
+
         scenery_path = self.cfg.paths.scenery_path
         showconfig = self.cfg.general.showconfig
         maptype = self.cfg.autoortho.maptype_override
-        maptypes = ['', 'BI', 'NAIP', 'EOX', 'USGS', 'Firefly'] 
+        maptypes = ['', 'BI', 'NAIP', 'EOX', 'USGS', 'Firefly']
 
         sg.theme('DarkAmber')
 
@@ -114,19 +114,19 @@ class ConfigUI(object):
                 #),
                 sg.Image(os.path.join(CUR_PATH, 'imgs', 'banner1.png'), subsample=2),
             ],
-            #[sg.Text(f'ver: {__version__}')], 
+            #[sg.Text(f'ver: {__version__}')],
             #[sg.Image(os.path.join(CUR_PATH, 'imgs', 'flight1.png'), subsample=3)],
             [sg.HorizontalSeparator(pad=5)],
             [
-                sg.Text('Scenery install dir:', size=(18,1)), 
+                sg.Text('Scenery install dir:', size=(18,1)),
                 sg.InputText(scenery_path, size=(45,1), key='scenery_path',
-                    metadata={'section':self.cfg.paths}), 
+                    metadata={'section':self.cfg.paths}),
                 sg.FolderBrowse(key="scenery_b", target='scenery_path', initial_folder=scenery_path)
             ],
             [
-                sg.Text('X-Plane install dir:', size=(18,1)), 
+                sg.Text('X-Plane install dir:', size=(18,1)),
                 sg.InputText(self.cfg.paths.xplane_path, size=(45,1), key='xplane_path',
-                    metadata={'section':self.cfg.paths}), 
+                    metadata={'section':self.cfg.paths}),
                 sg.FolderBrowse(key="xplane_b", target='xplane_path', initial_folder=self.cfg.paths.xplane_path)
             ],
             [
@@ -157,7 +157,7 @@ class ConfigUI(object):
                 sg.Text('Cache size in GB'),
                 sg.Slider(
                     range=(10,500,5),
-                    default_value=self.cfg.cache.file_cache_size, 
+                    default_value=self.cfg.cache.file_cache_size,
                     key='file_cache_size',
                     size=(20,15),
                     orientation='horizontal',
@@ -165,22 +165,11 @@ class ConfigUI(object):
                 ),
                 sg.Button('Clean Cache')
                 #sg.InputText(
-                #    self.cfg.cache.file_cache_size, 
+                #    self.cfg.cache.file_cache_size,
                 #    key='file_cache_size',
                 #    size=(5,1),
                 #    metadata={'section':self.cfg.cache}
                 #),
-            ],
-            [
-                sg.Text('Saturation'),
-                sg.Slider(
-                    range=(0, 100, 5),
-                    default_value = self.cfg.coloring.saturation,
-                    key='saturation',
-                    size=(20,15),
-                    orientation='horizontal',
-                    metadata={'section':self.cfg.coloring}
-                ),
             ],
             [
                 sg.Text('Global Zoom Out'),
@@ -219,7 +208,7 @@ class ConfigUI(object):
                 scenery.append([sg.Text(f"{latest.name} current version {r.local_rel.ver}")])
                 if version.parse(latest.ver) > version.parse(r.local_rel.ver):
                     pending_update = True
-        
+
             else:
                 scenery.append([sg.Text(f"{latest.name}")])
                 pending_update = True
@@ -237,6 +226,67 @@ class ConfigUI(object):
         #scenery.append([sg.Text(key='-EXPAND-', font='ANY 1', pad=(0,0))])
         #scenery.append([sg.StatusBar("...", size=(74,3), key="status", auto_size_text=True, expand_x=True)])
 
+        seasons = [
+            [sg.HorizontalSeparator(pad=5)],
+            [
+                sg.Radio('Enabled', group_id = 1, default = self.cfg.seasons.enabled,
+                         key = 'seasons-enabled', enable_events=True),
+                sg.Radio('Disabled', group_id = 1, default = not self.cfg.seasons.enabled,
+                         key = 'seasons-disabled', enable_events=True)
+            ],
+            [sg.HorizontalSeparator(pad=5)],
+            [
+                sg.Text('Spring Saturation'),
+                sg.Slider(
+                    range=(0, 100, 5),
+                    default_value = self.cfg.seasons.spr_saturation,
+                    key='spr_saturation',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.seasons}
+                ),
+            ],
+
+            [sg.HorizontalSeparator(pad=5)],
+            [
+                sg.Text('Summer Saturation'),
+                sg.Slider(
+                    range=(0, 100, 5),
+                    default_value = self.cfg.seasons.sum_saturation,
+                    key='sum_saturation',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.seasons}
+                ),
+            ],
+
+            [sg.HorizontalSeparator(pad=5)],
+            [
+                sg.Text('Fall Saturation'),
+                sg.Slider(
+                    range=(0, 100, 5),
+                    default_value = self.cfg.seasons.fal_saturation,
+                    key='fal_saturation',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.seasons}
+                ),
+            ],
+
+            [sg.HorizontalSeparator(pad=5)],
+            [
+                sg.Text('Winter Saturation'),
+                sg.Slider(
+                    range=(0, 100, 5),
+                    default_value = self.cfg.seasons.win_saturation,
+                    key='win_saturation',
+                    size=(20,15),
+                    orientation='horizontal',
+                    metadata={'section':self.cfg.seasons}
+                ),
+            ],
+
+        ]
         #
         # Console logs tab
         #
@@ -259,8 +309,9 @@ class ConfigUI(object):
         layout = [
             [sg.TabGroup(
                 [[
-                    sg.Tab('Setup', setup), 
+                    sg.Tab('Setup', setup),
                     sg.Tab('Scenery', [[scenery_column]]),
+                    sg.Tab('Seasons', seasons),
                     sg.Tab('Logs', logs)
                 ]])
             ],
@@ -280,7 +331,7 @@ class ConfigUI(object):
         self.window['-EXPAND-'].expand(True, True, True)
         self.status = self.window['status']
         self.log = self.window['log']
-        
+
         self.running = True
         close = False
 
@@ -290,7 +341,7 @@ class ConfigUI(object):
         if self.splash_w is not None:
             # GUI starting, close splash screen
             self.splash_w.close()
-        
+
         self.ready.set()
 
         try:
@@ -351,6 +402,9 @@ class ConfigUI(object):
                     button.update(disabled=True)
                     regionid = event.split("-")[1]
                     self.scenery_q.put(regionid)
+                elif event.startswith("seasons-"):
+                    self.cfg.load()
+                    self.cfg.seasons.enabled = (event.split("-")[1] == "enabled")
                 elif self.show_errs:
                     font = ("Helventica", 14)
                     sg.popup("\n".join(self.show_errs), title="ERROR!", font=font)
@@ -388,12 +442,12 @@ class ConfigUI(object):
             self.scenery_dl = True
             t = threading.Thread(target=self.region_progress, args=(regionid,))
             t.start()
-            
+
             button = self.window[f"scenery-{regionid}"]
             try:
                 button.update("Working")
                 self.dl.download_dir = self.cfg.paths.download_dir
-               
+
                 region = self.dl.regions.get(regionid)
                 if not region.install_release():
                     print("Errors detected!")
@@ -403,7 +457,7 @@ class ConfigUI(object):
                     button.update("Retry?")
                     button.update(disabled=False)
                     continue
-                
+
                 button.update(visible=False)
                 updates = self.window[f"updates-{regionid}"]
                 updates.update("Updated!")
@@ -421,7 +475,7 @@ class ConfigUI(object):
                 self.scenery_dl = False
             t.join()
 
-    
+
     def region_progress(self, regionid):
         r = self.dl.regions.get(regionid)
         while self.scenery_dl:
@@ -442,10 +496,10 @@ class ConfigUI(object):
             metadata = self.window[k].metadata
             if not metadata:
                 continue
-            
+
             cfgsection = metadata.get('section')
             if cfgsection:
-                cfgsection.__dict__[k] = v 
+                cfgsection.__dict__[k] = v
         self.cfg.save()
         self.ready.set()
         self.refresh_scenery()
