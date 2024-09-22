@@ -19,7 +19,7 @@ import psutil
 from aoimage import AoImage
 
 from aoconfig import CFG
-from aostats import STATS, StatTracker, inc_stat
+from aostats import STATS, StatTracker, inc_stat, set_stat
 import aoseasons
 
 ao_seasons = None
@@ -150,42 +150,27 @@ class ChunkGetter(Getter):
         #log.debug(f"{obj}, {args}, {kwargs}")
         return obj.get(*args, **kwargs)
 
+class ExpSmoother():
+
+    def __init__(self, alpha, name):
+        self._alpha = alpha
+        self._name = name
+        self._smoothed_val = 0.0
+        self._lock = threading.RLock()
+
+    def add(self, val):
+        with self._lock:
+            self._smoothed_val = self._alpha * val + (1.0 - self._alpha) * self._smoothed_val
+
+    def get(self):
+        with self._lock:
+            return self._smoothed_val
+
 chunk_getter = ChunkGetter(int(CFG.autoortho.fetch_threads))
 
 log.info(f"chunk_getter: {chunk_getter}")
 
-class EventRate:
-    _nevent = 0
-    _nevent_prev = 0
-    rate = 0
-    qsize = 150
-    min_len = 10
-    max_len = 250
-
-    def __init__(self, name, tick_delta):
-        self.tick_delta = tick_delta
-        self.qsize = int(0.75 * self.max_len)
-        self.name = name
-        self.t = threading.Thread(target=self._ticker, daemon=True)
-        self.t.start()
-
-    def report_event(self):
-        self._nevent += 1
-
-    def _ticker(self):
-        while True:
-            self.rate = (self._nevent - self._nevent_prev) / self.tick_delta
-            self._nevent_prev = self._nevent
-            if self.rate > 0.0:
-                self.qsize -= 2 * self.rate * self.tick_delta
-            elif self.rate < 1.0:
-                self.qsize += 5
-
-            self.qsize = int(max(self.min_len, min(self.max_len, self.qsize)))
-            print(f"{self.name} rate: {self.rate:1.2f} {self.qsize}")
-            time.sleep(self.tick_delta)
-
-timeout_rate = EventRate("timeout", 3.0)
+avg_dl_time = ExpSmoother(0.7, "chunk dl time")
 
 class Chunk(object):
     col = -1
@@ -198,9 +183,6 @@ class Chunk(object):
     cache_dir = 'cache'
 
     attempt = 0
-
-    starttime = 0
-    fetchtime = 0
 
     ready = None
     img = None
@@ -256,17 +238,17 @@ class Chunk(object):
             self.ready.set()
             return True
 
-        remaining_time = self.deadline - time.time()
+        starttime = time.time()
+        remaining_time = self.deadline - starttime
+
+        dl_time = avg_dl_time.get()
 
         # expired before being retrieved
-        if remaining_time <= 0.3:
-            log.info(f"deadline not met for {self}")
+        if remaining_time <= dl_time:
+            #log.info(f"deadline not met for {self}")
+            inc_stat("deadline missed")
             self.ready.set()    # results in a black hole
-            timeout_rate.report_event()
             return True
-
-        if not self.starttime:
-            self.startime = time.time()
 
         server_num = idx%(len(self.serverlist))
         server = self.serverlist[server_num]
@@ -310,18 +292,17 @@ class Chunk(object):
                 # FALLTHROUGH
         except Exception as err:
             log.warning(f"Failed to get chunk {self} on server {server}. Err: {err}")
-            timeout_rate.report_event()
             # FALLTHROUGH
         finally:
             if resp:
                 resp.close()
 
-        self.fetchtime = time.time() - self.starttime
-
         if data:
             STATS['bytes_dl'] = STATS.get('bytes_dl', 0) + len(data)
             self.save_cache(data)
             self.img = AoImage.load_from_memory(data, log_error = False)
+            now = time.time()
+            avg_dl_time.add(now - starttime)
 
         self.ready.set()
         return True
@@ -341,7 +322,7 @@ class BgWorkUnit:
         return f"BgWorkUnit {self.pathname}"
 
     def execute(self):
-        #print(f"Saving {self.pathname}")
+        #log.info(f"Saving {self.pathname}")
         self.img.write_jpg(self.pathname, 50)
         for cn in self.chunk_names:
             try:
@@ -349,7 +330,7 @@ class BgWorkUnit:
                 #print(f"deleted {cn}")
             except FileNotFoundError:
                 pass
-                print(f"can't delete {cn}!")
+                #log.info(f"can't delete {cn} for {self.pathname}!")
 
 class Tile(object):
     row = -1
@@ -757,28 +738,21 @@ class Tile(object):
 
             # submitting more chunks than 'credits' will end in a timeout anyway
             # so just skip them
-            ql = chunk_getter.queue.qsize()
-            credits = max(0, timeout_rate.qsize - ql)
+            #ql = chunk_getter.queue.qsize()
 
             # a header read on first open is just a probe so we provide
             # a background image only (=mm4 and that's needed anyway as next
             # operation probes the length by reading 8-( )
             if self.first_open and req_header:
-                credits = 0
                 STATS['fake_hdr'] = STATS.get('fake_hdr', 0) + 1
 
             for chunk in chunks:
                 if chunk.img is None:
-                    if credits > 0:
-                        #log.info(f"SUBMIT: {chunk}")
-                        chunk.ready.clear()
-                        chunk.priority = ot_ctx.deadline
-                        chunk.deadline = ot_ctx.deadline
-                        chunk_getter.submit(chunk)
-                    else:
-                        STATS['submit_skip'] = STATS.get('submit_skip', 0) + 1
-                        chunk.ready.set()
-                credits -= 1
+                    #log.info(f"SUBMIT: {chunk}")
+                    chunk.ready.clear()
+                    chunk.priority = ot_ctx.deadline
+                    chunk.deadline = ot_ctx.deadline
+                    chunk_getter.submit(chunk)
 
         log.debug(f"GET_IMG: Create new image: Zoom: {self.zoom} | {(256*width, 256*height)}")
 
@@ -839,6 +813,7 @@ class Tile(object):
 
             new_im = new_im.enlarge_2(gzo_effective, height_only)
 
+        set_stat("chunk dl avg", avg_dl_time.get())
         return new_im
 
     @locked
