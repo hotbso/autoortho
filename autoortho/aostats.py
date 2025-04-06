@@ -42,7 +42,17 @@ class AOStats(object):
         while self.running:
             time.sleep(10)
             #s = {k:v for k,v in self.__dict__.items() if not k.startswith('_')}
-            log.info(f"STATS: ID: {STATS}")
+            #log.info(f"STATS: ID: {STATS}")
+            r = []
+            for k,v in STATS.items():
+                if type(v) == float:
+                    r.append(f"{k}: {v:0,.3f}")
+                elif type(v) == int:
+                    r.append(f"{k}: {v:0,.0f}")
+                else:
+                    r.append(f"{k}: {v}")
+
+            log.info(f"STATS: {'; '.join(r)}")
 
 
 class StatTracker(object):
