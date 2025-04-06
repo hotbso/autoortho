@@ -918,8 +918,9 @@ class OpenTile_Ctx:
             #print(f"new cycle: {self.last_read_pos} {offset}")
             self.deadline = time.time() + self._default_timeout
 
+        res = self.tile.read_dds_bytes(offset, length, self)
         self.last_read_pos = offset + length
-        return self.tile.read_dds_bytes(offset, length, self)
+        return res
 
 class TileCacher(object):
     cache_mem_lim = pow(2,30) * 2
