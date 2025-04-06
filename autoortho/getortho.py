@@ -733,7 +733,7 @@ class Tile(object):
                 assert bg_width == 1
                 # submit in front of the other chunks
                 bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, -1, cache_dir=self.cache_dir)
-                bg_chunk.deadline = ot_ctx.deadline - 0.5
+                bg_chunk.deadline = ot_ctx.deadline - 0.1
                 chunk_getter.submit(bg_chunk)
 
             # submitting more chunks than 'credits' will end in a timeout anyway
