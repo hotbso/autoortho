@@ -554,7 +554,6 @@ class Tile(object):
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
-        part1 = None
         if offset == 0:
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
@@ -578,19 +577,8 @@ class Tile(object):
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
 
-            # If we seek here (i.e. we are not in a sequential read cycle) we conclude that
-            # this is just a collateral effect of input blocking and data does not matter.
-            # So we do not do a costly construction of the end row of this mm but return zeroes.
-            if mm_idx < 4 and offset != ot_ctx.last_read_pos:
-                #print(f"Seek into middle of mm {mm_idx} {offset} {length}")
-                delta = mipmap.endpos - offset
-                part1 = b'\x00' * delta
-                offset += delta
-                length -= delta
-                assert length >= 0
-            else:
-                # Get bytes prior to this mipmap
-                self.get_bytes(offset, length, ot_ctx)
+            # Get bytes prior to this mipmap
+            self.get_bytes(offset, length, ot_ctx)
 
             # Get the entire next mipmap
             self.get_mipmap(ot_ctx, mm_idx + 1)
@@ -599,10 +587,7 @@ class Tile(object):
 
         # Seek and return data
         self.dds.seek(offset)
-        if part1 is None:
-            return self.dds.read(length)
-        else:
-            return part1 + self.dds.read(length)
+        return self.dds.read(length)
 
     @locked
     def execute_bg_work(self):
@@ -845,6 +830,7 @@ class Tile(object):
             else:
                 self.dds.gen_mipmaps(new_im, mipmap)
         except:
+            log.error(f"can't gen mipmaps {self}")
             pass
 
         end_time = time.time()
