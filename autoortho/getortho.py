@@ -215,7 +215,6 @@ class Chunk(object):
         return self.priority < other.priority
 
     def __repr__(self):
-        #return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority})"
         return f"Chunk({self.col},{self.row},{self.maptype},{self.zoom},{self.priority},{self.deadline - time.time():0.1f})"
 
     def get_cache(self):
@@ -350,13 +349,10 @@ class Tile(object):
 
     chunks = None
     hdr_im = None       # header image
-    cache_file = None
     dds = None
 
     refs = None
     last_access = 0
-
-    first_open = True
 
     def __init__(self, col, row, maptype, zoom, min_zoom=0, priority=0, cache_dir=None):
         self.row = int(row)
@@ -364,15 +360,10 @@ class Tile(object):
         self.maptype = maptype
         self.zoom = int(zoom)
         self.chunks = {}
-        self.cache_file = (-1, None)
         self.ready = threading.Event()
         self._lock = threading.RLock()
         self.refs = 0
 
-        self.bytes_read = 0
-        self.lowest_offset = 99999999
-
-        #self.tile_condition = threading.Condition()
         if min_zoom:
             self.min_zoom = int(min_zoom)
 
@@ -384,10 +375,7 @@ class Tile(object):
         # Hack override maptype
         #self.maptype = "BI"
 
-        #self._find_cached_tiles()
         self.ready.clear()
-
-        #self._find_cache_file()
 
         if not priority:
             self.priority = zoom
@@ -464,7 +452,6 @@ class Tile(object):
         return self.dds.mipmap_list[-1].idx
 
     def get_bytes(self, offset, length, ot_ctx):
-
         mipmap = self.find_mipmap_pos(offset)
         log.debug(f"Get_bytes for mipmap {mipmap} ...")
         if mipmap > 4:
@@ -521,7 +508,6 @@ class Tile(object):
         # Only attempt partial compression from mipmap start
         if offset == 0:
             compress_len = length
-            #compress_len = length - 128
         else:
             compress_len = 0
 
@@ -548,9 +534,6 @@ class Tile(object):
     def read_dds_bytes(self, offset, length, ot_ctx):
         log.debug(f"READ DDS BYTES: {offset} {length}")
 
-        if offset > 0 and offset < self.lowest_offset:
-            self.lowest_offset = offset
-
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
@@ -558,11 +541,7 @@ class Tile(object):
             # If offset = 0, read the header
             log.debug("READ_DDS_BYTES: Read header")
             self.get_bytes(0, length, ot_ctx)
-        #elif offset < 32768:
-        #elif offset < 65536:
         elif offset < 131072:
-        #elif offset < 262144:
-        #elif offset < 1048576:
             # How far into mipmap 0 do we go before just getting the whole thing
             log.debug("READ_DDS_BYTES: Middle of mipmap 0")
             self.get_bytes(0, length + offset, ot_ctx)
@@ -573,17 +552,17 @@ class Tile(object):
                 log.debug(f"READ_DDS_BYTES: Retrieve {mipmap.idx}")
                 self.get_mipmap(ot_ctx, mipmap.idx)
         else:
-            log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
+
+            inc_stat('mm_prior_partial')
+            #log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
 
             # Get bytes prior to this mipmap
             self.get_bytes(offset, length, ot_ctx)
 
             # Get the entire next mipmap
             self.get_mipmap(ot_ctx, mm_idx + 1)
-
-        self.bytes_read += length
 
         # Seek and return data
         self.dds.seek(offset)
@@ -660,7 +639,7 @@ class Tile(object):
         if mipmap < 4:
             new_im = AoImage.open(mm_jpg_path, log_error = False)
             if new_im:      # whole image found?
-                STATS['jpg_mm_hit'] = STATS.get('jpg_mm_hit', 0) + 1
+                inc_stat('jpg_mm_hit')
                 #print(f"opened {mm_jpg_path}")
                 if gzo_effective > 0:
                     new_im = new_im.enlarge_2(gzo_effective)
@@ -668,7 +647,7 @@ class Tile(object):
             elif startrow == 0 and req_mipmap == 0 and self.hdr_im is None: # else try r0 for later
                 self.hdr_im = AoImage.open(hdr_jpg_path, log_error = False)
                 if self.hdr_im:
-                    STATS['jpg_hdr_hit'] = STATS.get('jpg_hdr_hit', 0) + 1
+                    inc_stat('jpg_hdr_hit')
 
         startchunk = 0
         endchunk = None
@@ -720,16 +699,6 @@ class Tile(object):
                 bg_chunk = Chunk(bg_col, bg_row, self.maptype, bg_zoom, -1, cache_dir=self.cache_dir)
                 bg_chunk.deadline = ot_ctx.deadline - 0.1
                 chunk_getter.submit(bg_chunk)
-
-            # submitting more chunks than 'credits' will end in a timeout anyway
-            # so just skip them
-            #ql = chunk_getter.queue.qsize()
-
-            # a header read on first open is just a probe so we provide
-            # a background image only (=mm4 and that's needed anyway as next
-            # operation probes the length by reading 8-( )
-            if self.first_open and req_header:
-                STATS['fake_hdr'] = STATS.get('fake_hdr', 0) + 1
 
             for chunk in chunks:
                 if chunk.img is None:
@@ -824,7 +793,6 @@ class Tile(object):
         self.ready.clear()
         start_time = time.time()
         try:
-            #self.dds.gen_mipmaps(new_im, mipmap)
             if mipmap == 0:
                 self.dds.gen_mipmaps(new_im, mipmap, 1)
             else:
@@ -850,29 +818,12 @@ class Tile(object):
         log.debug(self.dds.mipmap_list)
         return True
 
-    def should_close(self):
-        if self.dds.mipmap_list[0].retrieved:
-            if self.bytes_read < self.dds.mipmap_list[0].length:
-                log.warning(f"TILE: {self} retrieved mipmap 0, but only read {self.bytes_read}. Lowest offset: {self.lowest_offset}")
-                return False
-            else:
-                #log.info(f"TILE: {self} retrieved mipmap 0, full read of mipmap! {self.bytes_read}.")
-                return True
-        else:
-            return True
-
     def close(self):
         log.debug(f"Closing {self}")
 
         #print(f"\n\nClosing {self} {len(self.bg_work)}")
 
         self.execute_bg_work()
-        if self.dds.mipmap_list[0].retrieved:
-            if self.bytes_read < self.dds.mipmap_list[0].length:
-                log.warning(f"TILE: {self} retrieved mipmap 0, but only read {self.bytes_read}. Lowest offset: {self.lowest_offset}")
-            else:
-                log.debug(f"TILE: {self} retrieved mipmap 0, full read of mipmap! {self.bytes_read}.")
-
         if self.refs > 0:
             log.warning(f"TILE: Trying to close, but has refs: {self.refs}")
             return
@@ -1021,9 +972,6 @@ class TileCacher(object):
                     min_zoom = self.min_zoom)
                 self.tiles[idx] = tile
                 self.open_count[idx] = self.open_count.get(idx, 0) + 1
-                if self.open_count[idx] > 1:
-                    tile.first_open = False
-                    log.debug(f"Tile: {idx} opened for the {self.open_count[idx]} time.")
             elif tile.refs <= 0:
                 # Only in this case would this cache have made a difference
                 self.hits += 1
@@ -1036,7 +984,6 @@ class TileCacher(object):
         t = open_tile.tile
         with self.tc_lock:
             t.refs -= 1
-            t.first_open = False
 
             # mark mms with voids as not retrieved but keep other cached data
             for m in t.dds.mipmap_list:
