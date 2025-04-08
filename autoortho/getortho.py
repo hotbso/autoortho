@@ -360,7 +360,6 @@ class Tile(object):
         self.maptype = maptype
         self.zoom = int(zoom)
         self.chunks = {}
-        self.ready = threading.Event()
         self._lock = threading.RLock()
         self.refs = 0
 
@@ -374,8 +373,6 @@ class Tile(object):
 
         # Hack override maptype
         #self.maptype = "BI"
-
-        self.ready.clear()
 
         if not priority:
             self.priority = zoom
@@ -500,9 +497,6 @@ class Tile(object):
             log.debug("No updates, so no image generated")
             return True
 
-        self.ready.clear()
-        #log.info(new_im.size)
-
         start_time = time.time()
 
         # Only attempt partial compression from mipmap start
@@ -520,7 +514,6 @@ class Tile(object):
         log.debug(f"UNSETTING RETRIEVED! {self}")
         self.dds.mipmap_list[mipmap].retrieved = False
         end_time = time.time()
-        self.ready.set()
 
         if compress_len:
             #STATS['partial_mm'] = STATS.get('partial_mm', 0) + 1
@@ -790,7 +783,6 @@ class Tile(object):
             log.debug("GET_MIPMAP: No updates, so no image generated")
             return True
 
-        self.ready.clear()
         start_time = time.time()
         try:
             if mipmap == 0:
@@ -802,7 +794,6 @@ class Tile(object):
             pass
 
         end_time = time.time()
-        self.ready.set()
 
         zoom = self.zoom - mipmap
         tile_time = end_time - start_time
