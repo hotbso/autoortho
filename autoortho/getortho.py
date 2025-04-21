@@ -343,9 +343,7 @@ class Tile(object):
     max_mipmap = 4
 
     priority = -1
-    #tile_condition = None
     _lock = None
-    ready = None
 
     chunks = None
     hdr_im = None       # header image
@@ -548,9 +546,6 @@ class Tile(object):
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
 
-            inc_stat('mm_prior_partial')
-            #log.debug(f"READ_DDS_BYTES: Start before this mipmap {mipmap.idx}")
-
             # Get bytes prior to this mipmap
             self.get_bytes(offset, length, ot_ctx)
 
@@ -572,8 +567,6 @@ class Tile(object):
 
     def get_img(self, mipmap, ot_ctx, startrow=0, endrow=None):
         im = self._get_img(mipmap, ot_ctx, startrow, endrow)
-        if im is None:
-            return None
 
         if self.seasons_enabled:
             saturation = 0.01 * ao_seasons.saturation(self.row, self.col, self.zoom)
@@ -602,10 +595,7 @@ class Tile(object):
         log.debug(f"Will use:  Zoom: {zoom},  Mipmap: {mipmap}")
 
 
-        log.debug(f"GET_IMG: MM List before { {x.idx:x.retrieved for x in self.dds.mipmap_list} }")
-        if self.dds.mipmap_list[req_mipmap].retrieved:
-            log.debug(f"GET_IMG: We already have mipmap {req_mipmap} for {self}")
-            return
+        #log.debug(f"GET_IMG: MM List before { {x.idx:x.retrieved for x in self.dds.mipmap_list} }")
 
         req_header = req_mipmap == 0 and startrow == 0 and endrow == 0  # header only requested
         req_full_img = startrow == 0 and endrow is None                 # full image requested
@@ -776,12 +766,13 @@ class Tile(object):
         if mipmap > self.max_mipmap:
             mipmap = self.max_mipmap
 
+        if self.dds.mipmap_list[mipmap].retrieved:
+            inc_stat('mm_retrieved_hit')
+            return True
+
         # We can have multiple threads wait on get_img ...
         log.debug(f"GET_MIPMAP: Next call is get_img which may block!.............")
         new_im = self.get_img(mipmap, ot_ctx)
-        if not new_im:
-            log.debug("GET_MIPMAP: No updates, so no image generated")
-            return True
 
         start_time = time.time()
         try:
