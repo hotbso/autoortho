@@ -528,20 +528,12 @@ class Tile(object):
         mm_idx = self.find_mipmap_pos(offset)
         mipmap = self.dds.mipmap_list[mm_idx]
 
-        if offset == 0:
-            # If offset = 0, read the header
-            log.debug("READ_DDS_BYTES: Read header")
-            self.get_bytes(0, length, ot_ctx)
-        elif offset < 131072:
-            # How far into mipmap 0 do we go before just getting the whole thing
-            log.debug("READ_DDS_BYTES: Middle of mipmap 0")
-            self.get_bytes(0, length + offset, ot_ctx)
+        if offset < 131072:
+            # likely just the header
+            self.get_bytes(offset, length, ot_ctx)
         elif (offset + length) < mipmap.endpos:
             # Total length is within this mipmap.  Make sure we have it.
-            log.debug(f"READ_DDS_BYTES: Detected middle read for mipmap {mipmap.idx}")
-            if not mipmap.retrieved:
-                log.debug(f"READ_DDS_BYTES: Retrieve {mipmap.idx}")
-                self.get_mipmap(ot_ctx, mipmap.idx)
+            self.get_mipmap(ot_ctx, mipmap.idx)
         else:
             # We already know we start before the end of this mipmap
             # We must extend beyond the length.
@@ -767,7 +759,6 @@ class Tile(object):
             mipmap = self.max_mipmap
 
         if self.dds.mipmap_list[mipmap].retrieved:
-            inc_stat('mm_retrieved_hit')
             return True
 
         # We can have multiple threads wait on get_img ...
