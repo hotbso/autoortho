@@ -75,10 +75,10 @@ class AutoOrtho(Operations):
 
     def __init__(self, root, cache_dir='.cache', tile_cache = None):
         log.info(f"ROOT: {root}")
-        self.dds_re = re.compile(".*/(\d+)[-_](\d+)[-_]((?!ZL)\S*)(\d{2}).dds")
-        self.ktx2_re = re.compile(".*/(\d+)[-_](\d+)[-_]((?!ZL)\D*)(\d+).ktx2")
-        self.dsf_re = re.compile(".*/[-+]\d+[-+]\d+.dsf")
-        self.ter_re = re.compile(".*/\d+[-_]\d+[-_](\D*)(\d+).ter")
+        self.dds_re = re.compile(r".*/(\d+)[-_](\d+)[-_]((?!ZL)\S*)(\d{2}).dds")
+        self.ktx2_re = re.compile(r".*/(\d+)[-_](\d+)[-_]((?!ZL)\D*)(\d+).ktx2")
+        self.dsf_re = re.compile(r".*/[-+]\d+[-+]\d+.dsf")
+        self.ter_re = re.compile(r".*/\d+[-_]\d+[-_](\D*)(\d+).ter")
         self.root = root
         self.cache_dir = cache_dir
 
@@ -150,7 +150,7 @@ class AutoOrtho(Operations):
         #if m and not exists:
         if m:
             log.debug(f"GETATTR: {path}: MATCH!")
-            if not flighttrack.ft.running:
+            if False and not flighttrack.ft.running:
                 # First matched file
                 log.info(f"First matched DDS file {path} detected.  Start flight tracker.")
                 flighttrack.ft.start()
